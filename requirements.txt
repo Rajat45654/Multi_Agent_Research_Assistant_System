@@ -1,0 +1,44 @@
+# CUDA Toolkit 12.8 + PyTorch 2.11.0+cu12.8
+# ────────────────────────────────────────────────────────────────
+ 
+# ─── Core ML & LLM ───────────────────────────────────────────────
+# DO NOT INSTALL TORCH - USE COLLEGE'S 2.11.0+cu12.8
+torch==2.11.0+cu128
+transformers==4.40.0
+peft==0.11.1
+bitsandbytes==0.43.1
+accelerate==0.31.0
+datasets==2.19.0
+ 
+# ─── Embeddings & Retrieval ──────────────────────────────────────
+sentence-transformers==2.7.0
+faiss-cpu==1.8.0
+rank-bm25==0.2.2
+ 
+# ─── Data Collection & Processing ───────────────────────────────
+arxiv>=2.1.0
+pymupdf==1.23.8
+tiktoken==0.7.0
+ 
+# ─── Evaluation Metrics ──────────────────────────────────────────
+nltk==3.8.1
+rouge-score==0.1.2
+evaluate==0.4.2
+numpy==1.26.4
+scipy==1.13.1
+ 
+# ─── API & Serving ───────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+httpx==0.27.0
+pydantic==2.7.4
+ 
+# ─── Utilities ───────────────────────────────────────────────────
+tqdm==4.66.4
+pyyaml==6.0.1
+python-dotenv==1.0.1
+rich==13.7.1
+ 
+# ─── Development ─────────────────────────────────────────────────
+ipykernel==6.29.5
+jupyter==1.0.0

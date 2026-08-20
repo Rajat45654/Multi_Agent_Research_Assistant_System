@@ -1,0 +1,137 @@
+# ─────────────────────────────────────────────────────────────────
+# Multi-Agent Research Assistant - .gitignore
+# ─────────────────────────────────────────────────────────────────
+
+# ─── Virtual Environment ─────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.local
+
+# ─── Python Cache & Compiled Files ──────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ─── Jupyter & Notebooks ────────────────────────────────────────
+.ipynb_checkpoints
+*.ipynb_checkpoints
+*.ipynb
+.jupyter/
+
+# ─── IDE & Editor Files ─────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ─── Large Data Files (regenerate locally) ──────────────────────
+# Raw papers and documents
+data/raw/
+data/papers/
+data/*.pdf
+data/*.txt
+
+# Generated embeddings (large FAISS index)
+data/processed/embeddings/
+data/processed/*.faiss
+data/processed/*.pkl
+
+# Q&A pairs (regenerate with generate_qa.py)
+# Uncomment below if you want to exclude Q&A pairs
+# data/processed/qa_pairs.json
+# data/processed/qa_pairs.jsonl
+
+# ─── Model Checkpoints (regenerate with fine-tuning) ─────────────
+models/
+*.bin
+*.safetensors
+*.pt
+checkpoint-*/
+
+# ─── Evaluation Results & Logs ──────────────────────────────────
+evals/results/
+evals/*.json
+evals/*.csv
+*.log
+logs/
+
+# ─── Documentation & Context Files ──────────────────────────────
+project_context_prompt.md
+
+# ─── System & OS Files ──────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+.directory
+Thumbs.db
+
+# ─── Temporary Files ────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+.~*
+
+# ─── Environment & Config ───────────────────────────────────────
+.env
+.env.*.local
+secrets/
+credentials/
+*.key
+*.pem
+config/secrets.yaml
+
+# ─── Package Manager ────────────────────────────────────────────
+.pip-cache/
+.poetry-cache/
+.tox/
+
+# ─── Testing & Coverage ─────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ─── Output Files (regenerate) ──────────────────────────────────
+outputs/
+results/
+*.output
+*.out
+
+# ─── Local Development ──────────────────────────────────────────
+local/
+scratch/
+temp/
+test_output/

@@ -1,0 +1,90 @@
+# ═══════════════════════════════════════════════════════════════
+# Multi-Agent Research Assistant — Central Configuration
+# ═══════════════════════════════════════════════════════════════
+
+paths:
+  data_dir: "data"
+  raw_dir: "data/raw"
+  papers_dir: "data/raw/papers"
+  processed_dir: "data/processed"
+  embeddings_dir: "data/processed/embeddings"
+  models_dir: "models"
+  logs_dir: "logs"
+
+# ─── Data Collection ──────────────────────────────────────────
+data_collection:
+  categories:
+    - "cs.LG"    # Machine Learning
+    - "cs.CL"    # Computation & Language (NLP)
+    - "cs.AI"    # Artificial Intelligence
+  num_papers: 500
+  max_results_per_query: 100
+
+# ─── Text Chunking ────────────────────────────────────────────
+chunking:
+  chunk_size: 512      # tokens per chunk
+  overlap: 256         # overlap between consecutive chunks
+  tokenizer: "cl100k_base"  # tiktoken encoding (GPT-4 compatible)
+
+# ─── Embeddings ───────────────────────────────────────────────
+embeddings:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  batch_size: 64
+  device: "auto"   # "auto" = GPU if available, else CPU
+
+# ─── Retrieval ────────────────────────────────────────────────
+retrieval:
+  semantic_weight: 0.7   # weight for FAISS semantic score
+  bm25_weight: 0.3       # weight for BM25 keyword score
+  top_k_semantic: 5      # FAISS top-K per query
+  top_k_bm25: 5          # BM25 top-K per query
+  top_k_final: 10        # final merged results returned
+
+# ─── Q&A Generation ───────────────────────────────────────────
+qa_generation:
+  model_name: "mistralai/Mistral-7B-Instruct-v0.2"
+  load_in_4bit: true
+  pairs_per_paper: 2
+  target_total: 1000
+  difficulty_split:
+    easy: 0.40
+    medium: 0.40
+    hard: 0.20
+  max_new_tokens: 256
+  temperature: 0.7
+
+# ─── Fine-tuning (Phase 2) ────────────────────────────────────
+finetuning:
+  base_model: "mistralai/Mistral-7B-Instruct-v0.2"
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+    - "k_proj"
+    - "o_proj"
+  batch_size: 4
+  gradient_accumulation_steps: 2
+  learning_rate: 2.0e-4
+  num_epochs: 3
+  warmup_steps: 100
+  val_split: 0.1
+  output_dir: "models/mistral-7b-finetuned"
+
+# ─── Agent System (Phase 2-3) ─────────────────────────────────
+agents:
+  max_iterations: 3
+  confidence_threshold: 0.7
+  memory_window: 10
+
+# ─── Evaluation (Phase 4) ─────────────────────────────────────
+evaluation:
+  test_set_size: 200
+  bootstrap_iterations: 100
+  metrics:
+    - "exact_match"
+    - "f1"
+    - "bleu"
+    - "rouge_l"
+    - "citation_accuracy"
