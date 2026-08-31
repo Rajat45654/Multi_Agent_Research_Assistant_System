@@ -88,6 +88,11 @@ class FineTuningConfig:
     warmup_steps: int = 100
     val_split: float = 0.1
     output_dir: str = "models/mistral-7b-finetuned"
+    use_wandb: bool = True
+    wandb_project: str = "research-assistant-finetune"
+    save_steps: int = 50
+    logging_steps: int = 10
+    max_seq_length: int = 2048
 
 
 @dataclass

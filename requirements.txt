@@ -4,14 +4,15 @@
 # ─── Core ML & LLM ───────────────────────────────────────────────
 # DO NOT INSTALL TORCH - USE COLLEGE'S 2.11.0+cu12.8
 torch==2.11.0+cu128
-transformers==4.40.0
+transformers>=5.0.0
 peft==0.11.1
-bitsandbytes==0.43.1
-accelerate==0.31.0
-datasets==2.19.0
+accelerate>=1.0.0
+datasets>=5.0.0
+trl>=0.9.0                 # SFT / Fine-tuning trainer
+wandb                       # Experiment tracking
  
 # ─── Embeddings & Retrieval ──────────────────────────────────────
-sentence-transformers==2.7.0
+sentence-transformers>=3.0.0
 faiss-cpu==1.8.0
 rank-bm25==0.2.2
  

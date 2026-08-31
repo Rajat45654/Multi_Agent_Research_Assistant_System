@@ -43,7 +43,8 @@ retrieval:
 # ─── Q&A Generation ───────────────────────────────────────────
 qa_generation:
   model_name: "mistralai/Mistral-7B-Instruct-v0.2"
-  load_in_4bit: true
+  load_in_4bit: false       # DISABLED: Blackwell GPUs use bfloat16 natively
+  torch_dtype: "bfloat16"
   pairs_per_paper: 2
   target_total: 1000
   difficulty_split:
@@ -53,7 +54,8 @@ qa_generation:
   max_new_tokens: 256
   temperature: 0.7
 
-# ─── Fine-tuning (Phase 2) ────────────────────────────────────
+# ─── Fine-tuning (Phase 2 — Completed) ───────────────────────────
+# Results: train_loss=1.346, val_loss=1.556, duration=75min, confidence=1.00
 finetuning:
   base_model: "mistralai/Mistral-7B-Instruct-v0.2"
   lora_r: 16
@@ -71,6 +73,11 @@ finetuning:
   warmup_steps: 100
   val_split: 0.1
   output_dir: "models/mistral-7b-finetuned"
+  use_wandb: true
+  wandb_project: "research-assistant-finetune"
+  save_steps: 50
+  logging_steps: 10
+  max_seq_length: 2048
 
 # ─── Agent System (Phase 2-3) ─────────────────────────────────
 agents:

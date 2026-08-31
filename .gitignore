@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────
-# Multi-Agent Research Assistant - .gitignore
+# Multi-Agent Research Assistant — .gitignore
 # ─────────────────────────────────────────────────────────────────
 
 # ─── Virtual Environment ─────────────────────────────────────────
@@ -53,38 +53,43 @@ MANIFEST
 *.sublime-workspace
 
 # ─── Large Data Files (regenerate locally) ──────────────────────
-# Raw papers and documents
+# Raw papers & PDFs (too large for git, regenerate with collect_papers.py)
 data/raw/
 data/papers/
 data/*.pdf
 data/*.txt
+test.pdf
 
-# Generated embeddings (large FAISS index)
+# Generated FAISS embeddings (large binary, regenerate with build_index.py)
 data/processed/embeddings/
 data/processed/*.faiss
 data/processed/*.pkl
 
-# Q&A pairs (regenerate with generate_qa.py)
-# Uncomment below if you want to exclude Q&A pairs
-# data/processed/qa_pairs.json
-# data/processed/qa_pairs.jsonl
+# Q&A pairs (commit these — they represent Phase 1 work)
+# data/processed/qa_pairs.json   <-- INCLUDED in git
 
-# ─── Model Checkpoints (regenerate with fine-tuning) ─────────────
+# Processed chunks (large, regenerate with chunking pipeline)
+data/processed/chunks.jsonl
+data/processed/chunks_metadata.json
+
+# ─── Model Checkpoints (too large for git — use Git LFS or HF Hub) ─
 models/
 *.bin
 *.safetensors
 *.pt
 checkpoint-*/
 
-# ─── Evaluation Results & Logs ──────────────────────────────────
+# ─── Weights & Biases ────────────────────────────────────────────
+wandb/
+
+# ─── Logs ────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── Evaluation Results ──────────────────────────────────────────
 evals/results/
 evals/*.json
 evals/*.csv
-*.log
-logs/
-
-# ─── Documentation & Context Files ──────────────────────────────
-project_context_prompt.md
 
 # ─── System & OS Files ──────────────────────────────────────────
 .DS_Store
@@ -104,7 +109,7 @@ Thumbs.db
 *~
 .~*
 
-# ─── Environment & Config ───────────────────────────────────────
+# ─── Secrets & Credentials ──────────────────────────────────────
 .env
 .env.*.local
 secrets/
@@ -124,14 +129,15 @@ config/secrets.yaml
 htmlcov/
 .tox/
 
-# ─── Output Files (regenerate) ──────────────────────────────────
+# ─── Output & Scratch Files ─────────────────────────────────────
 outputs/
 results/
 *.output
 *.out
-
-# ─── Local Development ──────────────────────────────────────────
 local/
 scratch/
 temp/
 test_output/
+
+# ─── Project Context (local dev notes, not for repo) ────────────
+project_context_prompt.md
