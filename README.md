@@ -9,10 +9,11 @@ A **production-grade multi-agent RAG system** that answers complex research ques
 | Phase | Description | Status | Key Result |
 |-------|-------------|--------|------------|
 | **Phase 1A** | Data Collection (500 ArXiv papers) | ✅ Done | 500 papers, ~40K chunks |
-| **Phase 1B** | Synthetic Q&A Generation | ✅ Done | 999 Q&A pairs (easy/medium/hard) |
+| **Phase 1B** | Synthetic Q&A Generation | ✅ Done | **5,000 Q&A pairs** (easy/medium/hard) |
 | **Phase 1C** | Hybrid Retrieval (FAISS + BM25) | ✅ Done | **MRR@10: 0.8640** |
-| **Phase 2** | LoRA Fine-Tuning + Multi-Agent Pipeline | ✅ Done | **Train loss: 1.346, Confidence: 1.00** |
-| **Phase 3** | Iterative Refinement + Evaluation | 🔜 Planned | — |
+| **Phase 2 v1** | LoRA Fine-Tuning (1K data) | ✅ Done | Train: 1.346, Val: 1.556, gap: 0.21 |
+| **Phase 2 v2** | LoRA Fine-Tuning (5K data, improved) | ✅ Done | **Train: 1.531, Val: 1.513, gap: 0.018** |
+| **Phase 3** | Agent Robustness + Evaluation Suite | 🔜 Planned | — |
 | **Phase 4** | Benchmarking & Metrics | 🔜 Planned | — |
 | **Phase 5** | API + Deployment | 🔜 Planned | — |
 
@@ -61,12 +62,13 @@ User Query
 ## 🧠 Model
 
 - **Base:** `mistralai/Mistral-7B-Instruct-v0.2`
-- **Fine-tuning:** LoRA (`r=16, alpha=32`) via `trl` SFTTrainer
+- **Fine-tuning:** LoRA (`r=32, alpha=64`) via `trl` SFTTrainer — v2 improved config
 - **Precision:** Native `bfloat16` (Blackwell GPU optimized, no quantization)
-- **Training data:** 999 synthetic Q&A pairs from 500 ArXiv papers
-- **Training time:** ~75 minutes
-- **Final train loss:** `1.346` | **Val loss:** `1.556`
+- **Training data:** **5,000 synthetic Q&A pairs** from 500 ArXiv papers (10 per paper)
+- **Training time:** ~3.5 hours
+- **Final train loss:** `1.531` | **Val loss:** `1.513` | **Gap: `0.018`** ← near-zero overfitting
 - **Live test confidence:** `1.00` (grounded, zero hallucinations detected)
+- **Adapter saved to:** `models/mistral-7b-finetuned-v2/`
 
 ---
 
@@ -172,17 +174,23 @@ Hybrid retrieval (70% semantic + 30% keyword) outperforms either method alone.
 
 ## 📊 Phase 2 Results
 
-| Metric | Value |
-|--------|-------|
-| Training samples | 900 (90% of 999) |
-| Validation samples | 99 (10% of 999) |
-| LoRA trainable params | 13.6M / 7.26B (0.19%) |
-| Training duration | ~75 min |
-| Final train loss | 1.346 |
-| Final val loss | 1.556 |
-| Pipeline confidence score | **1.00** |
-| Grounded (no hallucination) | **True** |
-| Iterations to approve | 1 |
+### v1 → v2 Comparison
+
+| Metric | v1 (1K data) | v2 (5K data) | Change |
+|--------|-------------|-------------|--------|
+| Training samples | 900 | **4,500** | +5x |
+| Validation samples | 99 | **500** | +5x |
+| LoRA rank (`r`) | 16 | **32** | doubled |
+| LoRA dropout | 0.05 | **0.10** | stronger regularization |
+| Learning rate | 2e-4 | **1e-4** | more stable |
+| Epochs | 3 | **2** | more data = fewer passes |
+| Trainable params | 13.6M (0.19%) | **27.3M (0.375%)** | more capacity |
+| Final train loss | 1.346 | **1.531** | higher = less memorization |
+| Final val loss | 1.556 | **1.513** | ✅ lower = better generalization |
+| Train/val gap | 0.210 | **0.018** | ✅ 12x smaller, near-zero overfit |
+| Pipeline confidence | 1.00 | **1.00** | maintained |
+| Grounded | True | **True** | maintained |
+| Iterations to approve | 1 | **1** | maintained |
 
 ---
 
@@ -215,8 +223,11 @@ Key sections:
 
 ## 🔜 Upcoming (Phase 3+)
 
-- [ ] Scale data to 5,000 Q&A pairs for better generalization
-- [ ] Formal evaluation suite (ROUGE, BERTScore, F1, EM)
-- [ ] Iterative Critic→Synthesizer refinement loop
+- [ ] Robust agent output parsing (fix Reader 1-passage regression)
+- [ ] Clean citation formatting (fix `[/ ]` artifacts)
+- [ ] Proper paper source attribution (fix `unknown` sources)
+- [ ] Iterative Critic→Synthesizer refinement loop (up to 3 passes)
+- [ ] Multi-hop reasoning (queries spanning multiple papers)
+- [ ] Formal evaluation suite (ROUGE, BERTScore, F1, EM) across 200 test queries
 - [ ] FastAPI serving layer
 - [ ] Docker deployment

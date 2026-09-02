@@ -45,22 +45,21 @@ qa_generation:
   model_name: "mistralai/Mistral-7B-Instruct-v0.2"
   load_in_4bit: false       # DISABLED: Blackwell GPUs use bfloat16 natively
   torch_dtype: "bfloat16"
-  pairs_per_paper: 2
-  target_total: 1000
+  pairs_per_paper: 10       # Increased from 2 → deeper per-document coverage
+  target_total: 5000        # Increased from 1000 → 5x more training data
   difficulty_split:
-    easy: 0.40
+    easy: 0.30              # Reduced → fewer trivial examples
     medium: 0.40
-    hard: 0.20
+    hard: 0.30              # Increased → forces reasoning, not memorization
   max_new_tokens: 256
-  temperature: 0.7
+  temperature: 0.85         # Higher → more diverse question phrasing
 
-# ─── Fine-tuning (Phase 2 — Completed) ───────────────────────────
-# Results: train_loss=1.346, val_loss=1.556, duration=75min, confidence=1.00
+# ─── Fine-tuning (Scale-Up v2) ────────────────────────────────
 finetuning:
   base_model: "mistralai/Mistral-7B-Instruct-v0.2"
-  lora_r: 16
-  lora_alpha: 32
-  lora_dropout: 0.05
+  lora_r: 32              # Increased → more capacity for 5K examples
+  lora_alpha: 64          # Scaled with lora_r (alpha = 2×r)
+  lora_dropout: 0.1       # Increased → stronger regularization
   target_modules:
     - "q_proj"
     - "v_proj"
@@ -68,14 +67,14 @@ finetuning:
     - "o_proj"
   batch_size: 4
   gradient_accumulation_steps: 2
-  learning_rate: 2.0e-4
-  num_epochs: 3
-  warmup_steps: 100
+  learning_rate: 1.0e-4   # Reduced → more stable with larger dataset
+  num_epochs: 2           # Reduced → more data needs fewer passes
+  warmup_steps: 200       # Increased → proportional to larger dataset
   val_split: 0.1
-  output_dir: "models/mistral-7b-finetuned"
+  output_dir: "models/mistral-7b-finetuned-v2"
   use_wandb: true
   wandb_project: "research-assistant-finetune"
-  save_steps: 50
+  save_steps: 100         # Adjusted for larger total step count
   logging_steps: 10
   max_seq_length: 2048
 

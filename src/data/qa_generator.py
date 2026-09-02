@@ -31,25 +31,29 @@ class QAGenerator:
             self._init_model()
             
     def _init_model(self):
-        """Initialize local Mistral model in 4-bit."""
+        """Initialize local Mistral model in bfloat16 (no quantization)."""
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+            from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError:
-            logger.error("transformers or bitsandbytes not installed. Cannot initialize model.")
+            logger.error("transformers not installed. Cannot initialize model.")
             raise
-            
-        logger.info(f"Loading model {self.config.qa_generation.model_name} in 4-bit mode...")
-        
+
+        import os
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+        logger.info(f"Loading model {self.config.qa_generation.model_name} in bfloat16...")
+
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.qa_generation.model_name)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-            
+
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.qa_generation.model_name,
             torch_dtype=torch.bfloat16,
             device_map="auto"
         )
         logger.info("Model loaded successfully.")
+
 
     def _generate_prompt(self, context: str, difficulty: str) -> str:
         """Creates a prompt for the model based on difficulty."""
@@ -135,12 +139,49 @@ Context:
             return "medium"
         return "hard"
 
+    def _load_checkpoint(self) -> list:
+        """Load existing QA pairs from checkpoint file if it exists."""
+        checkpoint_file = self.processed_dir / "qa_pairs_checkpoint.json"
+        if checkpoint_file.exists():
+            with open(checkpoint_file, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+            logger.info(f"Resuming from checkpoint: {len(existing)} pairs already generated.")
+            return existing
+        return []
+
+    def _save_checkpoint(self, qa_pairs: list) -> None:
+        """Save current progress to checkpoint file."""
+        checkpoint_file = self.processed_dir / "qa_pairs_checkpoint.json"
+        with open(checkpoint_file, 'w', encoding='utf-8') as f:
+            json.dump(qa_pairs, f)
+
+    def _get_processed_chunk_ids(self, qa_pairs: list) -> set:
+        """Extract chunk IDs already processed so we skip them on resume."""
+        # chunk_id is stored in source_arxiv_id + we use context_docs as proxy
+        # We track via a separate set written alongside checkpoint
+        ids_file = self.processed_dir / "qa_processed_ids.json"
+        if ids_file.exists():
+            with open(ids_file, 'r', encoding='utf-8') as f:
+                return set(json.load(f))
+        return set()
+
+    def _save_processed_ids(self, processed_ids: set) -> None:
+        ids_file = self.processed_dir / "qa_processed_ids.json"
+        with open(ids_file, 'w', encoding='utf-8') as f:
+            json.dump(list(processed_ids), f)
+
     def process_all(self) -> None:
-        """Process chunks and generate target number of Q&A pairs."""
+        """
+        Process chunks and generate target number of Q&A pairs.
+
+        Saves a checkpoint every 100 pairs so progress is never lost
+        if the process is interrupted. On re-run, automatically resumes
+        from the checkpoint.
+        """
         if not self.chunks_file.exists():
             logger.error(f"Chunks file not found at {self.chunks_file}")
             return
-            
+
         # Group chunks by arxiv_id to ensure distribution
         chunks_by_doc = {}
         with open(self.chunks_file, 'r', encoding='utf-8') as f:
@@ -150,55 +191,90 @@ Context:
                 if doc_id not in chunks_by_doc:
                     chunks_by_doc[doc_id] = []
                 chunks_by_doc[doc_id].append(chunk)
-                
+
         doc_ids = list(chunks_by_doc.keys())
         if not doc_ids:
             logger.error("No chunks found to process.")
             return
-            
+
         logger.info(f"Loaded chunks for {len(doc_ids)} documents.")
-        
-        qa_pairs = []
+
+        # ── Resume from checkpoint if available ──────────────────────
+        qa_pairs = self._load_checkpoint()
+        processed_ids = self._get_processed_chunk_ids(qa_pairs)
+
         target = self.config.qa_generation.target_total
         pairs_per_doc = self.config.qa_generation.pairs_per_paper
-        
-        pbar = tqdm(total=target, desc="Generating Q&A pairs")
-        
-        # Simple loop: take a few chunks from each doc
-        # In a real scenario, we might want to prioritize specific types of chunks
+        checkpoint_interval = 100  # save every N new pairs
+
+        if len(qa_pairs) >= target:
+            logger.info(f"Already have {len(qa_pairs)} pairs (target={target}). Nothing to do.")
+            # Finalise output file from checkpoint
+            with open(self.qa_file, 'w', encoding='utf-8') as f:
+                json.dump(qa_pairs, f, indent=2)
+            return
+
+        pbar = tqdm(total=target, initial=len(qa_pairs), desc="Generating Q&A pairs")
+        pairs_since_last_save = 0
+
         for doc_id in doc_ids:
             if len(qa_pairs) >= target:
                 break
-                
+
             doc_chunks = chunks_by_doc[doc_id]
-            # Select random chunks from this document
             num_to_select = min(pairs_per_doc, len(doc_chunks))
             selected_chunks = random.sample(doc_chunks, num_to_select)
-            
+
             for chunk in selected_chunks:
                 if len(qa_pairs) >= target:
                     break
-                    
+
+                chunk_id = chunk.get('chunk_id', '')
+
+                # ── Skip already-processed chunks on resume ──────────
+                if chunk_id in processed_ids:
+                    continue
+
                 difficulty = self.determine_difficulty()
                 qa_pair = self.generate_for_chunk(chunk, difficulty)
-                
+
+                processed_ids.add(chunk_id)
+
                 if qa_pair:
                     qa_pairs.append(qa_pair)
                     pbar.update(1)
-                    
+                    pairs_since_last_save += 1
+
+                    # ── Checkpoint every N pairs ──────────────────────
+                    if pairs_since_last_save >= checkpoint_interval:
+                        self._save_checkpoint(qa_pairs)
+                        self._save_processed_ids(processed_ids)
+                        logger.info(f"Checkpoint saved ({len(qa_pairs)}/{target} pairs).")
+                        pairs_since_last_save = 0
+
         pbar.close()
-        
+
+        # ── Final save ────────────────────────────────────────────────
         with open(self.qa_file, 'w', encoding='utf-8') as f:
             json.dump(qa_pairs, f, indent=2)
-            
+
+        # Clean up checkpoint files now that we're done
+        checkpoint_file = self.processed_dir / "qa_pairs_checkpoint.json"
+        ids_file = self.processed_dir / "qa_processed_ids.json"
+        if checkpoint_file.exists():
+            checkpoint_file.unlink()
+        if ids_file.exists():
+            ids_file.unlink()
+
         logger.info(f"Q&A generation complete. Saved {len(qa_pairs)} pairs to {self.qa_file}")
+
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Generate Q&A pairs from text chunks.")
     parser.add_argument("--dry_run", action="store_true", help="Run without loading the LLM (generates dummy data).")
     args = parser.parse_args()
-    
+
     cfg = load_config()
     generator = QAGenerator(cfg, dry_run=args.dry_run)
     generator.process_all()
