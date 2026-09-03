@@ -87,9 +87,10 @@ logs/
 *.log
 
 # ─── Evaluation Results ──────────────────────────────────────────
-evals/results/
+evals/results/*.json
 evals/*.json
 evals/*.csv
+!evals/results/*.md
 
 # ─── System & OS Files ──────────────────────────────────────────
 .DS_Store
@@ -131,7 +132,7 @@ htmlcov/
 
 # ─── Output & Scratch Files ─────────────────────────────────────
 outputs/
-results/
+/results/
 *.output
 *.out
 local/

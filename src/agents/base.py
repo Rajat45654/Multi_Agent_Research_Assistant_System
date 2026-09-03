@@ -32,14 +32,22 @@ def load_model(cfg: Config):
     if _shared_model is not None:
         return _shared_model, _shared_tokenizer
 
-    finetuned_dir = Path(cfg.finetuning.output_dir)
+    finetuned_dir = Path(cfg.finetuning.output_dir)  # models/mistral-7b-finetuned-v2
+    # Also check for v1 as fallback
+    finetuned_dir_v1 = Path(str(finetuned_dir).replace("-v2", ""))
     base_model_name = cfg.finetuning.base_model
 
     logger.info("Loading model for agent inference...")
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        str(finetuned_dir) if finetuned_dir.exists() else base_model_name
-    )
+    # Determine which adapter to load (prefer v2)
+    adapter_dir = None
+    for candidate in [finetuned_dir, finetuned_dir_v1]:
+        if candidate.exists() and (candidate / "adapter_config.json").exists():
+            adapter_dir = candidate
+            break
+
+    tok_dir = str(adapter_dir) if adapter_dir else base_model_name
+    tokenizer = AutoTokenizer.from_pretrained(tok_dir)
     tokenizer.pad_token = tokenizer.eos_token
 
     base = AutoModelForCausalLM.from_pretrained(
@@ -48,14 +56,14 @@ def load_model(cfg: Config):
         device_map="auto",
     )
 
-    if finetuned_dir.exists() and (finetuned_dir / "adapter_config.json").exists():
-        logger.info(f"Loading LoRA adapter from {finetuned_dir}")
-        model = PeftModel.from_pretrained(base, str(finetuned_dir))
-        model = model.merge_and_unload()  # Merge LoRA weights into base for fast inference
+    if adapter_dir:
+        logger.info(f"Loading LoRA adapter from {adapter_dir}")
+        model = PeftModel.from_pretrained(base, str(adapter_dir))
+        model = model.merge_and_unload()  # Merge LoRA weights for fast inference
         logger.info("Fine-tuned model loaded and merged.")
     else:
         logger.warning(
-            f"No fine-tuned model found at {finetuned_dir}. "
+            f"No fine-tuned adapter found. "
             "Using base model. Run scripts/run_finetuning.py first."
         )
         model = base
@@ -109,8 +117,12 @@ class BaseAgent(ABC):
         generated_ids = outputs[0][input_len:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
+    def _generate(self, prompt: str, max_new_tokens: int = 512, temperature: float = 0.3) -> str:
+        """Alias for generate() — preferred internal method name."""
+        return self.generate(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+
     def run(self, **kwargs) -> dict:
-        """Main entry point: builds prompt, generates, parses and returns output."""
+        """Default entry point (used only if subclass does not override run())."""
         prompt = self.build_prompt(**kwargs)
-        raw_output = self.generate(prompt)
-        return self.parse_output(raw_output)
+        raw_output = self._generate(prompt)
+        return self.parse_output(raw_output, **kwargs)

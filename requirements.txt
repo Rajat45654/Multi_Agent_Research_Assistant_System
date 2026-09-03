@@ -42,4 +42,4 @@ rich==13.7.1
  
 # ─── Development ─────────────────────────────────────────────────
 ipykernel==6.29.5
-jupyter==1.0.0
+jupyter==1.0.0bert-score==0.3.13

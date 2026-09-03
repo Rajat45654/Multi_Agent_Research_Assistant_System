@@ -13,9 +13,9 @@ A **production-grade multi-agent RAG system** that answers complex research ques
 | **Phase 1C** | Hybrid Retrieval (FAISS + BM25) | ✅ Done | **MRR@10: 0.8640** |
 | **Phase 2 v1** | LoRA Fine-Tuning (1K data) | ✅ Done | Train: 1.346, Val: 1.556, gap: 0.21 |
 | **Phase 2 v2** | LoRA Fine-Tuning (5K data, improved) | ✅ Done | **Train: 1.531, Val: 1.513, gap: 0.018** |
-| **Phase 3** | Agent Robustness + Evaluation Suite | 🔜 Planned | — |
-| **Phase 4** | Benchmarking & Metrics | 🔜 Planned | — |
-| **Phase 5** | API + Deployment | 🔜 Planned | — |
+| **Phase 3** | Agent Robustness + Evaluation Suite | ✅ Done | **BERTScore: 0.7996, Hallucination: 1.5%** |
+| **Phase 4** | API & Serving Layer (FastAPI) | 🔜 Next | — |
+| **Phase 5** | Containerization & Deployment (Docker) | 🔜 Planned | — |
 
 ---
 
@@ -194,6 +194,33 @@ Hybrid retrieval (70% semantic + 30% keyword) outperforms either method alone.
 
 ---
 
+## 📊 Phase 3 Evaluation Results (200 Held-Out Test Queries)
+
+Evaluated end-to-end across 200 held-out academic queries with native GPU inference:
+
+| Metric | Score | Target | Status |
+|--------|-------|--------|--------|
+| **Evaluation Completion** | **200 / 200 (0 errors)** | 200 | 100% stable |
+| **Hallucination Rate** | **1.5%** | $\le 10\%$ | 🏆 Grounded |
+| **BERTScore F1** | **0.7996** | $\ge 0.75$ | 🎯 Semantic alignment |
+| **Average Confidence** | **0.998** | $\ge 0.85$ | 🌟 High certainty |
+| **Average Iterations** | **1.04** | $\le 2.0$ | ⚡ 96% approved on pass 1 |
+| **Token F1** | **0.3438** | — | High lexical precision |
+| **ROUGE-L** | **0.2311** | — | Long-form cited explanations vs short references |
+| **Average Pipeline Latency**| **76.6s / query** | — | 4-agent local GPU inference |
+
+### Breakdown by Question Difficulty
+
+| Difficulty | Queries | Token F1 | ROUGE-L | Hallucination Rate | Avg Confidence |
+|------------|---------|----------|---------|--------------------|----------------|
+| **Easy**   | 55      | 0.2116   | 0.1690  | 5.5%               | 0.991          |
+| **Medium** | 78      | 0.4009   | 0.2640  | **0.0%**           | 1.000          |
+| **Hard**   | 67      | 0.3857   | 0.2437  | **0.0%**           | 1.000          |
+
+*Note: Medium and Hard queries achieved 0.0% hallucination with 1.00 confidence, demonstrating that the 3-strategy Reader Agent and hybrid retriever successfully capture complex context without degradation.*
+
+---
+
 ## ⚙️ Configuration
 
 All hyperparameters are centralized in [`config.yaml`](config.yaml). No hardcoded values in source code.
@@ -215,19 +242,17 @@ Key sections:
 | Vector search | `faiss-gpu` |
 | Keyword search | `rank-bm25` |
 | Embeddings | `sentence-transformers` (all-MiniLM-L6-v2) |
+| Evaluation Metrics | `bert-score`, `rouge-score` |
 | Training tracking | `wandb` (offline mode) |
 | PDF extraction | `pdfminer.six` |
 | Data source | ArXiv API |
 
 ---
 
-## 🔜 Upcoming (Phase 3+)
+## 🔜 Upcoming (Phase 4 & 5)
 
-- [ ] Robust agent output parsing (fix Reader 1-passage regression)
-- [ ] Clean citation formatting (fix `[/ ]` artifacts)
-- [ ] Proper paper source attribution (fix `unknown` sources)
-- [ ] Iterative Critic→Synthesizer refinement loop (up to 3 passes)
-- [ ] Multi-hop reasoning (queries spanning multiple papers)
-- [ ] Formal evaluation suite (ROUGE, BERTScore, F1, EM) across 200 test queries
-- [ ] FastAPI serving layer
-- [ ] Docker deployment
+- [ ] FastAPI REST serving layer (`/query` and `/health` endpoints)
+- [ ] Asynchronous request queueing & streaming answers
+- [ ] Multi-hop query decomposition for comparative cross-paper synthesis
+- [ ] Docker containerization & deployment
+

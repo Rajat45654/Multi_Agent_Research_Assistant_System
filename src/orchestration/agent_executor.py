@@ -1,19 +1,19 @@
 """
-Agent Executor — Main Orchestration Loop.
+Agent Executor — Phase 3 (Iterative Refinement + Source Attribution).
 
-This is the "brain coordinator" that manages all agents and tools.
-It runs the full multi-agent pipeline in sequence:
+Orchestrates the full multi-agent pipeline:
 
     User Query
-        → [RetrievalTool]      (search for relevant docs)
-        → [ReaderAgent]        (extract relevant passages)
-        → [SynthesizerAgent]   (write final answer)
-        → [CriticAgent]        (validate, assign confidence)
-        → If rejected: retry loop (max iterations)
-        → Final Response
+        → [RetrievalTool]      retrieve top-K chunks
+        → [ReaderAgent]        extract 3-6 relevant passages (3-strategy parser)
+        → [SynthesizerAgent]   write cited answer using ALL passages
+        → [CriticAgent]        validate, score, produce structured feedback
+        → If confidence < threshold:
+              Synthesizer gets specific feedback → tries again (max 3 iterations)
+        → Return best answer + full reasoning trace + proper source attribution
 
 Design: Pure Python state machine — no LangChain overhead.
-Complete traceability: every step is logged to a reasoning_trace list.
+Full traceability: every step logged to reasoning_trace.
 """
 
 from typing import List, Dict, Any, Optional
@@ -33,10 +33,13 @@ logger = get_logger(__name__)
 class AgentResponse:
     """The final structured response returned to the user / API."""
     answer: str
-    sources: List[str]
-    citations: List[str]
+    sources: List[str]          # Properly attributed: ["arXiv:XXXX.XXXXX", ...]
+    citations: List[str]        # Citation strings from synthesizer
+    citation_ids: List[int]     # Verified [Evidence N] IDs used in answer
     confidence: float
     is_grounded: bool
+    missing_aspects: List[str]
+    hallucination_flags: List[str]
     reasoning_trace: List[Dict[str, Any]]
     iterations: int
     query: str
@@ -59,12 +62,13 @@ class ConversationMemory:
 
 class AgentExecutor:
     """
-    Orchestrates the multi-agent research pipeline.
+    Orchestrates the multi-agent research pipeline (Phase 3).
 
     Usage:
         executor = AgentExecutor(cfg)
         response = executor.query("What is the transformer attention mechanism?")
         print(response.answer)
+        print(response.sources)        # Now shows arXiv IDs, not "unknown"
         print(response.reasoning_trace)
     """
 
@@ -75,7 +79,6 @@ class AgentExecutor:
 
         logger.info("Initializing AgentExecutor...")
 
-        # Load all tools and agents (model is loaded once via singleton in base.py)
         self.retrieval_tool = RetrievalTool(cfg)
         self.reader = ReaderAgent(cfg)
         self.synthesizer = SynthesizerAgent(cfg)
@@ -90,10 +93,10 @@ class AgentExecutor:
 
         Args:
             question: The user's natural language research question.
-            top_k: Number of documents to retrieve for context.
+            top_k   : Number of documents to retrieve for context.
 
         Returns:
-            An AgentResponse with the final answer and full reasoning trace.
+            AgentResponse with answer, sources, confidence, and full trace.
         """
         reasoning_trace = []
         self.memory.add("user", question)
@@ -109,64 +112,95 @@ class AgentExecutor:
 
         # ── Step 2: Reader ────────────────────────────────────────────────
         logger.info("[Step 2/4] ReaderAgent: extracting relevant passages...")
-        reader_output = self.reader.run(query=question, retrieved_docs=retrieved_docs)
+        reader_output = self.reader.run(
+            query=question,
+            retrieved_docs=retrieved_docs,
+        )
         extracted_passages = reader_output["extracted_passages"]
         sources = reader_output["sources"]
+        doc_metadata = reader_output.get("doc_metadata", [])
+
         reasoning_trace.append({
             "step": "reader",
             "num_passages_extracted": len(extracted_passages),
-            "passages_preview": [p[:100] for p in extracted_passages[:2]],
+            "parse_strategy": reader_output.get("strategy", "unknown"),
+            "passages_preview": [p[:100] for p in extracted_passages[:3]],
         })
 
-        # ── Step 3 + 4: Synthesizer + Critic loop ─────────────────────────
+        # ── Steps 3+4: Synthesizer + Critic iterative loop ────────────────
         answer = ""
         citations = []
+        citation_ids = []
         confidence = 0.0
         is_grounded = False
+        missing_aspects = []
+        hallucination_flags = []
         critic_feedback = ""
-        iteration = 0
 
+        # Track best answer in case we exhaust iterations without approval
+        best_answer = ""
+        best_confidence = 0.0
+        best_citations = []
+        best_citation_ids = []
+        best_missing = []
+        best_flags = []
+
+        iteration = 0
         for iteration in range(1, self.max_iterations + 1):
             logger.info(f"[Step 3/4] SynthesizerAgent: iteration {iteration}...")
 
-            # Add critic feedback to passages context if retrying
-            synthesis_context = extracted_passages
-            if critic_feedback and iteration > 1:
-                synthesis_context = [f"[Feedback from previous attempt: {critic_feedback}]"] + extracted_passages
-
             synth_output = self.synthesizer.run(
                 query=question,
-                extracted_passages=synthesis_context,
+                extracted_passages=extracted_passages,
                 sources=sources,
+                doc_metadata=doc_metadata,
+                critic_feedback=critic_feedback,   # empty on iter 1, populated on retries
             )
             answer = synth_output["answer"]
             citations = synth_output["citations"]
+            citation_ids = synth_output["citation_ids"]
 
             reasoning_trace.append({
                 "step": f"synthesizer_iteration_{iteration}",
                 "answer_preview": answer[:200],
                 "num_citations": len(citations),
+                "citation_ids": citation_ids,
             })
 
-            # Critic validation
+            # ── Critic validation ─────────────────────────────────────────
             logger.info(f"[Step 4/4] CriticAgent: validating iteration {iteration}...")
             critic_output = self.critic.run(
                 query=question,
                 answer=answer,
                 extracted_passages=extracted_passages,
+                doc_metadata=doc_metadata,
             )
             is_grounded = critic_output["is_grounded"]
             confidence = critic_output["confidence"]
             critic_feedback = critic_output["feedback"]
+            missing_aspects = critic_output.get("missing_aspects", [])
+            hallucination_flags = critic_output.get("hallucination_flags", [])
+            attributed_sources = critic_output.get("sources", sources)
 
             reasoning_trace.append({
                 "step": f"critic_iteration_{iteration}",
                 "is_grounded": is_grounded,
                 "confidence": confidence,
                 "feedback": critic_feedback,
+                "missing_aspects": missing_aspects,
+                "hallucination_flags": hallucination_flags,
             })
 
-            # If grounded and confident enough, stop the loop
+            # Track best result so far
+            if confidence > best_confidence:
+                best_confidence = confidence
+                best_answer = answer
+                best_citations = citations
+                best_citation_ids = citation_ids
+                best_missing = missing_aspects
+                best_flags = hallucination_flags
+
+            # Approve if grounded and confident enough
             if is_grounded and confidence >= self.confidence_threshold:
                 logger.info(
                     f"Critic approved answer on iteration {iteration} "
@@ -179,14 +213,30 @@ class AgentExecutor:
                     f"confidence={confidence:.2f}). Retrying..."
                 )
 
+        # If never approved, fall back to the best attempt
+        if not (is_grounded and confidence >= self.confidence_threshold):
+            logger.warning(
+                f"Max iterations reached. Returning best answer "
+                f"(confidence={best_confidence:.2f})."
+            )
+            answer = best_answer
+            citations = best_citations
+            citation_ids = best_citation_ids
+            missing_aspects = best_missing
+            hallucination_flags = best_flags
+            confidence = best_confidence
+
         self.memory.add("assistant", answer)
 
         return AgentResponse(
             answer=answer,
-            sources=sources,
+            sources=attributed_sources,
             citations=citations,
+            citation_ids=citation_ids,
             confidence=confidence,
             is_grounded=is_grounded,
+            missing_aspects=missing_aspects,
+            hallucination_flags=hallucination_flags,
             reasoning_trace=reasoning_trace,
             iterations=iteration,
             query=question,
