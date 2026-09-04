@@ -14,8 +14,8 @@ A **production-grade multi-agent RAG system** that answers complex research ques
 | **Phase 2 v1** | LoRA Fine-Tuning (1K data) | ✅ Done | Train: 1.346, Val: 1.556, gap: 0.21 |
 | **Phase 2 v2** | LoRA Fine-Tuning (5K data, improved) | ✅ Done | **Train: 1.531, Val: 1.513, gap: 0.018** |
 | **Phase 3** | Agent Robustness + Evaluation Suite | ✅ Done | **BERTScore: 0.7996, Hallucination: 1.5%** |
-| **Phase 4** | API & Serving Layer (FastAPI) | 🔜 Next | — |
-| **Phase 5** | Containerization & Deployment (Docker) | 🔜 Planned | — |
+| **Phase 4** | API & Serving Layer (FastAPI) + Web UI | ✅ Done | **FastAPI, SSE Stream, Web Dashboard** |
+| **Phase 5** | Containerization & Deployment (Docker) | 🔜 Next | — |
 
 ---
 
@@ -96,8 +96,15 @@ research-assistant/
 │   │   ├── reader_agent.py      # Passage extraction agent
 │   │   ├── synthesizer_agent.py # Answer synthesis with citations
 │   │   └── critic_agent.py      # Hallucination detection & scoring
+│   ├── api/                     # FastAPI application & web UI (Phase 4)
+│   │   ├── app.py               # Lifespan manager, CORS, static mount
+│   │   ├── routes.py            # /query, /stream (SSE), /health, /metrics
+│   │   ├── schemas.py           # Pydantic request/response models
+│   │   └── static/              # Interactive Web Dashboard (HTML/CSS/JS)
+│   ├── evaluation/              # Quantitative benchmarking (Phase 3)
+│   │   └── evaluator.py         # ROUGE, BERTScore, F1, Hallucination
 │   ├── orchestration/
-│   │   └── agent_executor.py    # 4-step pipeline orchestrator
+│   │   └── agent_executor.py    # 4-step pipeline orchestrator & SSE generator
 │   ├── tools/
 │   │   └── retrieval_tool.py    # Retrieval interface for agents
 │   └── utils/
@@ -109,7 +116,10 @@ research-assistant/
 │   ├── build_index.py           # Run Phase 1C
 │   ├── eval_retrieval.py        # Evaluate retrieval (MRR, Recall)
 │   ├── run_finetuning.py        # Run Phase 2 fine-tuning
-│   └── test_agent_pipeline.py   # End-to-end pipeline test
+│   ├── test_agent_pipeline.py   # End-to-end pipeline test
+│   ├── run_evaluation.py        # Run Phase 3 200-query benchmark
+│   ├── serve_api.py             # Launch FastAPI server & Web UI (Phase 4)
+│   └── run_ablations.py         # Run component ablation study (Phase 4)
 ├── data/                        # Raw & processed data (gitignored)
 ├── models/                      # Fine-tuned adapter weights (gitignored)
 └── logs/                        # Training & evaluation logs (gitignored)
@@ -134,29 +144,40 @@ pip install -r requirements.txt
 # Collect 500 papers from ArXiv (cs.LG, cs.CL, cs.AI)
 python scripts/collect_papers.py
 
-# Generate 1,000 Q&A pairs (requires GPU, ~2-3 hrs)
-python scripts/generate_qa.py 2>&1 | tee logs/qa_generation.log
+# Generate 5,000 Q&A pairs (requires GPU)
+python scripts/generate_qa.py
 
 # Build FAISS + BM25 indices
 python scripts/build_index.py
 
 # Evaluate retrieval baseline
 python scripts/eval_retrieval.py
-# Expected: MRR@10 ≈ 0.8640
 ```
 
 ### 3. Reproduce Phase 2 — Fine-Tuning
 
 ```bash
-# Train LoRA adapter on Mistral-7B (~75 min on 2×GPU)
-WANDB_MODE=offline python scripts/run_finetuning.py 2>&1 | tee logs/finetuning.log
-# Expected: train_loss ≈ 1.346, val_loss ≈ 1.556
+# Train LoRA adapter on Mistral-7B
+WANDB_MODE=offline python scripts/run_finetuning.py
 ```
 
-### 4. Run the Full Agent Pipeline
+### 4. Run Quantitative Benchmark (Phase 3)
 
 ```bash
-python scripts/test_agent_pipeline.py --query "What is attention in transformers?"
+# Evaluate 200 held-out test queries
+python scripts/run_evaluation.py --num_samples 200
+```
+
+### 5. Launch API & Interactive Web Dashboard (Phase 4)
+
+```bash
+# Start FastAPI backend and serve web dashboard
+python scripts/serve_api.py --port 8000
+
+# Open in browser:
+# • Interactive Web UI : http://localhost:8000/
+# • OpenAPI Swagger Docs: http://localhost:8000/docs
+# • Health Status Check : http://localhost:8000/health
 ```
 
 ---
@@ -246,13 +267,37 @@ Key sections:
 | Training tracking | `wandb` (offline mode) |
 | PDF extraction | `pdfminer.six` |
 | Data source | ArXiv API |
+| Serving & API | `fastapi`, `uvicorn`, `pydantic` |
+| Web Dashboard | Vanilla HTML5, CSS3, JavaScript (ES6) |
 
 ---
 
-## 🔜 Upcoming (Phase 4 & 5)
+## 🌐 Phase 4: API Serving & Interactive Web Dashboard
 
-- [ ] FastAPI REST serving layer (`/query` and `/health` endpoints)
-- [ ] Asynchronous request queueing & streaming answers
+### Starting the Server
+```bash
+# Launch FastAPI server & interactive Web Dashboard on port 8000
+python scripts/serve_api.py --port 8000
+```
+
+### Endpoints Overview
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | `GET` | Interactive Single-Page Research Web Dashboard |
+| `/docs` | `GET` | Interactive Swagger UI documentation with test console |
+| `/openapi.json` | `GET` | Machine-readable OpenAPI 3.1.0 schema specification |
+| `/api/v1/query` | `POST` | Synchronous 4-stage multi-agent inference |
+| `/api/v1/stream` | `POST` / `GET` | Server-Sent Events (SSE) streaming real-time execution trace |
+| `/health` | `GET` | System health, uptime, and Blackwell GPU VRAM occupancy |
+| `/api/v1/metrics` | `GET` | Live telemetry (queries served, mean latency, groundedness %) |
+| `/api/v1/history` | `GET` | In-memory rolling history of recent queries |
+
+---
+
+## 🔜 Upcoming (Phase 5)
+
+- [ ] Docker containerization (`Dockerfile` & `docker-compose.yml`)
 - [ ] Multi-hop query decomposition for comparative cross-paper synthesis
-- [ ] Docker containerization & deployment
+- [ ] Dual-backend provider (Gemini Pro API adapter for CPU-only execution)
+- [ ] Production deployment & CI/CD pipeline
 

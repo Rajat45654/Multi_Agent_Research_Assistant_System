@@ -71,12 +71,18 @@ class SynthesizerAgent(BaseAgent):
     @staticmethod
     def _clean_artifacts(text: str) -> str:
         """Remove common LLM output artifacts from the synthesizer's response."""
+        # Strip instruction markers like [/INST], [INST]
+        text = re.sub(r"\[/?INST\]", "", text, flags=re.IGNORECASE)
+        # Strip special sentence markers <s>, </s>
+        text = re.sub(r"<\/?s>", "", text)
         # Remove [/ ], [/Evidence N], [/ Evidence N] patterns
         text = re.sub(r"\[/\s*(?:Evidence\s*\d+)?\s*\]", "", text)
         # Remove standalone [/ ] noise
         text = re.sub(r"\[/\s*\]", "", text)
         # Normalize [Evidence N] — ensure no spaces inside brackets
         text = re.sub(r"\[\s*Evidence\s*(\d+)\s*\]", r"[Evidence \1]", text)
+        # Strip leading "Answer:" or "Response:" prefix if regurgitated
+        text = re.sub(r"^(?:Answer|Response|Explanation):\s*", "", text.strip(), flags=re.IGNORECASE)
         # Remove duplicate whitespace/newlines
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)

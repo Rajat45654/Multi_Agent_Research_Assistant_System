@@ -43,6 +43,7 @@ class AgentResponse:
     reasoning_trace: List[Dict[str, Any]]
     iterations: int
     query: str
+    evidence: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -228,6 +229,17 @@ class AgentExecutor:
 
         self.memory.add("assistant", answer)
 
+        evidence_items = []
+        for i, passage in enumerate(extracted_passages):
+            meta = doc_metadata[i] if doc_metadata and i < len(doc_metadata) else {}
+            arxiv_id = meta.get("arxiv_id", "unknown")
+            evidence_items.append({
+                "id": i + 1,
+                "source": f"arXiv:{arxiv_id}",
+                "arxiv_id": arxiv_id,
+                "text": passage,
+            })
+
         return AgentResponse(
             answer=answer,
             sources=attributed_sources,
@@ -240,4 +252,220 @@ class AgentExecutor:
             reasoning_trace=reasoning_trace,
             iterations=iteration,
             query=question,
+            evidence=evidence_items,
         )
+
+    def stream_query(self, question: str, top_k: int = 10, max_iterations: Optional[int] = None):
+        """
+        Streaming generator version of query().
+        Yields step-by-step progress events as each agent runs,
+        finishing with the complete AgentResponse.
+        """
+        from dataclasses import asdict
+        max_iters = max_iterations or self.max_iterations
+        reasoning_trace = []
+        self.memory.add("user", question)
+
+        # ── Step 1: Retrieval ─────────────────────────────────────────────
+        yield {
+            "step": "retrieval_start",
+            "message": f"Searching hybrid index (FAISS + BM25) for top {top_k} documents...",
+            "data": {"query": question, "top_k": top_k}
+        }
+        retrieved_docs = self.retrieval_tool.retrieve(question, top_k=top_k)
+        reasoning_trace.append({
+            "step": "retrieval",
+            "num_docs_retrieved": len(retrieved_docs),
+            "top_doc_ids": [d.get("arxiv_id", "?") for d in retrieved_docs[:3]],
+        })
+        yield {
+            "step": "retrieval_done",
+            "message": f"Retrieved {len(retrieved_docs)} document chunks.",
+            "data": {
+                "num_chunks": len(retrieved_docs),
+                "docs": [
+                    {
+                        "arxiv_id": d.get("arxiv_id", "unknown"),
+                        "doc_num": i + 1,
+                        "preview": d.get("text", "")[:250] + "..."
+                    }
+                    for i, d in enumerate(retrieved_docs[:6])
+                ]
+            }
+        }
+
+        # ── Step 2: Reader ────────────────────────────────────────────────
+        yield {
+            "step": "reader_start",
+            "message": "Reader Agent extracting relevant evidence passages...",
+            "data": {}
+        }
+        reader_output = self.reader.run(
+            query=question,
+            retrieved_docs=retrieved_docs,
+        )
+        extracted_passages = reader_output["extracted_passages"]
+        sources = reader_output["sources"]
+        doc_metadata = reader_output.get("doc_metadata", [])
+
+        reasoning_trace.append({
+            "step": "reader",
+            "num_passages_extracted": len(extracted_passages),
+            "passages_preview": [p[:100] for p in extracted_passages[:3]],
+        })
+        yield {
+            "step": "reader_done",
+            "message": f"Reader Agent extracted {len(extracted_passages)} evidence passages.",
+            "data": {
+                "num_passages": len(extracted_passages),
+                "passages": extracted_passages[:5],
+                "sources": sources[:5]
+            }
+        }
+
+        # ── Steps 3+4: Synthesizer + Critic iterative loop ────────────────
+        answer = ""
+        citations = []
+        citation_ids = []
+        confidence = 0.0
+        is_grounded = False
+        missing_aspects = []
+        hallucination_flags = []
+        critic_feedback = ""
+        attributed_sources = sources
+
+        best_answer = ""
+        best_confidence = 0.0
+        best_citations = []
+        best_citation_ids = []
+        best_missing = []
+        best_flags = []
+
+        iteration = 0
+        for iteration in range(1, max_iters + 1):
+            yield {
+                "step": "synthesizer_start",
+                "message": f"Synthesizer Agent drafting answer (iteration {iteration}/{max_iters})...",
+                "data": {"iteration": iteration}
+            }
+
+            synth_output = self.synthesizer.run(
+                query=question,
+                extracted_passages=extracted_passages,
+                sources=sources,
+                doc_metadata=doc_metadata,
+                critic_feedback=critic_feedback,
+            )
+            answer = synth_output["answer"]
+            citations = synth_output["citations"]
+            citation_ids = synth_output["citation_ids"]
+
+            reasoning_trace.append({
+                "step": f"synthesizer_iteration_{iteration}",
+                "answer_preview": answer[:200],
+                "num_citations": len(citations),
+                "citation_ids": citation_ids,
+            })
+            yield {
+                "step": "synthesizer_done",
+                "message": f"Synthesizer completed draft ({len(answer)} chars, {len(citation_ids)} citations).",
+                "data": {
+                    "iteration": iteration,
+                    "answer_preview": answer[:300] + ("..." if len(answer) > 300 else ""),
+                    "citation_ids": citation_ids
+                }
+            }
+
+            # ── Critic validation ─────────────────────────────────────────
+            yield {
+                "step": "critic_start",
+                "message": f"Critic Agent fact-checking and validating grounding...",
+                "data": {"iteration": iteration}
+            }
+            critic_output = self.critic.run(
+                query=question,
+                answer=answer,
+                extracted_passages=extracted_passages,
+                doc_metadata=doc_metadata,
+            )
+            is_grounded = critic_output["is_grounded"]
+            confidence = critic_output["confidence"]
+            critic_feedback = critic_output["feedback"]
+            missing_aspects = critic_output.get("missing_aspects", [])
+            hallucination_flags = critic_output.get("hallucination_flags", [])
+            attributed_sources = critic_output.get("sources", sources)
+
+            reasoning_trace.append({
+                "step": f"critic_iteration_{iteration}",
+                "is_grounded": is_grounded,
+                "confidence": confidence,
+                "feedback": critic_feedback,
+                "missing_aspects": missing_aspects,
+                "hallucination_flags": hallucination_flags,
+            })
+            yield {
+                "step": "critic_done",
+                "message": f"Critic verdict: Grounded={'YES' if is_grounded else 'NO'}, Confidence={confidence:.2f}",
+                "data": {
+                    "iteration": iteration,
+                    "is_grounded": is_grounded,
+                    "confidence": confidence,
+                    "feedback": critic_feedback,
+                    "missing_aspects": missing_aspects,
+                    "hallucination_flags": hallucination_flags
+                }
+            }
+
+            if confidence > best_confidence:
+                best_confidence = confidence
+                best_answer = answer
+                best_citations = citations
+                best_citation_ids = citation_ids
+                best_missing = missing_aspects
+                best_flags = hallucination_flags
+
+            if is_grounded and confidence >= self.confidence_threshold:
+                break
+
+        if not (is_grounded and confidence >= self.confidence_threshold):
+            answer = best_answer
+            citations = best_citations
+            citation_ids = best_citation_ids
+            missing_aspects = best_missing
+            hallucination_flags = best_flags
+            confidence = best_confidence
+
+        self.memory.add("assistant", answer)
+
+        evidence_items = []
+        for i, passage in enumerate(extracted_passages):
+            meta = doc_metadata[i] if doc_metadata and i < len(doc_metadata) else {}
+            arxiv_id = meta.get("arxiv_id", "unknown")
+            evidence_items.append({
+                "id": i + 1,
+                "source": f"arXiv:{arxiv_id}",
+                "arxiv_id": arxiv_id,
+                "text": passage,
+            })
+
+        final_response = AgentResponse(
+            answer=answer,
+            sources=attributed_sources,
+            citations=citations,
+            citation_ids=citation_ids,
+            confidence=confidence,
+            is_grounded=is_grounded,
+            missing_aspects=missing_aspects,
+            hallucination_flags=hallucination_flags,
+            reasoning_trace=reasoning_trace,
+            iterations=iteration,
+            query=question,
+            evidence=evidence_items,
+        )
+
+        yield {
+            "step": "complete",
+            "message": "Multi-agent research response ready.",
+            "data": asdict(final_response)
+        }
+

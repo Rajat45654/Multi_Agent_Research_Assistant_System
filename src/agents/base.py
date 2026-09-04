@@ -69,6 +69,8 @@ def load_model(cfg: Config):
         model = base
 
     model.eval()
+    if hasattr(model, "config"):
+        model.config.use_cache = True
     _shared_model = model
     _shared_tokenizer = tokenizer
 
@@ -110,6 +112,7 @@ class BaseAgent(ABC):
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 do_sample=(temperature > 0),
+                use_cache=True,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )

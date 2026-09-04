@@ -1,0 +1,50 @@
+"""
+CLI Launcher for the Multi-Agent Research Assistant FastAPI server.
+
+Usage:
+    python scripts/serve_api.py --port 8000
+    python scripts/serve_api.py --port 8000 --host 0.0.0.0
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import uvicorn
+from src.utils.logger import get_logger
+
+logger = get_logger("scripts.serve_api")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Start the Multi-Agent Research Assistant API server.")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host interface to bind (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for local development")
+    args = parser.parse_args()
+
+    print("\n" + "=" * 60)
+    print("  🔬 MULTI-AGENT RESEARCH ASSISTANT API SERVER")
+    print("=" * 60)
+    print(f"  • Web Dashboard : http://localhost:{args.port}/")
+    print(f"  • Swagger Docs  : http://localhost:{args.port}/docs")
+    print(f"  • OpenAPI Spec  : http://localhost:{args.port}/openapi.json")
+    print(f"  • Health Check  : http://localhost:{args.port}/health")
+    print("=" * 60 + "\n")
+
+    # Run uvicorn server (1 worker owns the GPU VRAM cleanly)
+    uvicorn.run(
+        "src.api.app:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        workers=1,
+        log_level="info",
+    )
+
+
+if __name__ == "__main__":
+    main()
