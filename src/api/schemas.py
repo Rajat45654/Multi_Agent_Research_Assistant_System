@@ -149,6 +149,16 @@ class HealthResponse(BaseModel):
         description="Overall service health state ('healthy' or 'degraded').",
         example="healthy"
     )
+    llm_backend: str = Field(
+        default="local",
+        description="Active LLM inference backend ('local' for Mistral-7B GPU or 'gemini' for Cloud API).",
+        example="local"
+    )
+    gemini_model: Optional[str] = Field(
+        default=None,
+        description="Active Google Gemini model if backend is 'gemini'.",
+        example="gemini-1.5-flash"
+    )
     gpu_device_name: Optional[str] = Field(
         None,
         description="Active GPU model name detected by PyTorch.",
@@ -166,7 +176,7 @@ class HealthResponse(BaseModel):
     )
     model_loaded: bool = Field(
         ...,
-        description="True if Mistral-7B model and LoRA adapter are loaded in memory.",
+        description="True if LLM engine (local model or Gemini client) is initialized.",
         example=True
     )
     indices_loaded: bool = Field(

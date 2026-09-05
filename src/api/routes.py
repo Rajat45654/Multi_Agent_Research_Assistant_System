@@ -71,8 +71,14 @@ async def health_check(request: Request):
     model_loaded = executor is not None and getattr(executor, "reader", None) is not None
     indices_loaded = executor is not None and getattr(executor, "retrieval_tool", None) is not None
 
+    cfg = getattr(request.app.state, "config", None)
+    backend = getattr(getattr(cfg, "llm", None), "backend", "local") if cfg else "local"
+    gemini_model = getattr(getattr(cfg, "llm", None), "gemini_model", None) if backend == "gemini" else None
+
     return HealthResponse(
         status="healthy" if (model_loaded and indices_loaded) else "degraded",
+        llm_backend=backend,
+        gemini_model=gemini_model,
         gpu_device_name=gpu_name,
         gpu_memory_used_mb=gpu_used_mb,
         gpu_memory_total_mb=gpu_total_mb,

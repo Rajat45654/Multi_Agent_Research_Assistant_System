@@ -280,6 +280,21 @@ Key sections:
 python scripts/serve_api.py --port 8000
 ```
 
+### ⚡ Dual Backend Switch (Local GPU vs. Gemini Cloud API)
+The system supports two interchangeable LLM backends:
+
+1. **Local Mode (Default)**: Uses fine-tuned Mistral-7B running on an NVIDIA GPU via PyTorch.
+   ```bash
+   python scripts/serve_api.py --backend local
+   ```
+
+2. **Gemini Mode (CPU-only / Zero GPU Required)**: Uses Google Gemini API (Gemini 1.5 Flash / Pro) for instant ~2-4s responses on any standard laptop without an NVIDIA GPU.
+   ```bash
+   # Set your Gemini API key in .env or shell:
+   export GEMINI_API_KEY="your_api_key_here"
+   python scripts/serve_api.py --backend gemini
+   ```
+
 ### Endpoints Overview
 | Endpoint | Method | Description |
 |---|---|---|
@@ -288,7 +303,7 @@ python scripts/serve_api.py --port 8000
 | `/openapi.json` | `GET` | Machine-readable OpenAPI 3.1.0 schema specification |
 | `/api/v1/query` | `POST` | Synchronous 4-stage multi-agent inference |
 | `/api/v1/stream` | `POST` / `GET` | Server-Sent Events (SSE) streaming real-time execution trace |
-| `/health` | `GET` | System health, uptime, and Blackwell GPU VRAM occupancy |
+| `/health` | `GET` | System health, uptime, active backend, and GPU VRAM occupancy |
 | `/api/v1/metrics` | `GET` | Live telemetry (queries served, mean latency, groundedness %) |
 | `/api/v1/history` | `GET` | In-memory rolling history of recent queries |
 
@@ -296,8 +311,8 @@ python scripts/serve_api.py --port 8000
 
 ## 🔜 Upcoming (Phase 5)
 
+- [x] Dual-backend provider (Gemini Pro/Flash API adapter for CPU-only execution)
 - [ ] Docker containerization (`Dockerfile` & `docker-compose.yml`)
 - [ ] Multi-hop query decomposition for comparative cross-paper synthesis
-- [ ] Dual-backend provider (Gemini Pro API adapter for CPU-only execution)
 - [ ] Production deployment & CI/CD pipeline
 

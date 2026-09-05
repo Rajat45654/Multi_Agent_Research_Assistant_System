@@ -70,38 +70,66 @@ class CriticAgent(BaseAgent):
         extracted_passages = kwargs.get("extracted_passages", [])
 
         is_grounded = True
-        confidence = 0.7
+        confidence = None
         feedback = "No specific feedback provided."
         missing_aspects = []
         hallucination_flags = []
 
         for line in raw_output.strip().split("\n"):
-            line = line.strip()
-            upper = line.upper()
+            clean_line = re.sub(r"[*_`]", "", line).strip()
+            clean_line = re.sub(r"^[\s\-#>]+", "", clean_line).strip()
 
-            if upper.startswith("GROUNDED:"):
-                verdict = line.split(":", 1)[-1].strip().upper()
+            m_grounded = re.search(r"\bGROUNDED\s*:\s*([A-Za-z]+)", clean_line, re.IGNORECASE)
+            if m_grounded:
+                verdict = m_grounded.group(1).upper()
                 is_grounded = verdict.startswith("YES")
+                continue
 
-            elif upper.startswith("CONFIDENCE:"):
+            m_conf = re.search(r"\bCONFIDENCE\s*:\s*([0-9]*\.?[0-9]+)", clean_line, re.IGNORECASE)
+            if m_conf:
                 try:
-                    confidence = float(line.split(":", 1)[-1].strip())
-                    confidence = max(0.0, min(1.0, confidence))
+                    c = float(m_conf.group(1))
+                    confidence = max(0.0, min(1.0, c))
                 except ValueError:
                     pass
+                continue
 
-            elif upper.startswith("FEEDBACK:"):
-                feedback = line.split(":", 1)[-1].strip()
+            m_feedback = re.search(r"\bFEEDBACK\s*:\s*(.*)", clean_line, re.IGNORECASE)
+            if m_feedback:
+                fb = m_feedback.group(1).strip()
+                if fb:
+                    feedback = fb
+                continue
 
-            elif upper.startswith("MISSING:"):
-                raw_missing = line.split(":", 1)[-1].strip()
+            m_missing = re.search(r"\bMISSING\s*:\s*(.*)", clean_line, re.IGNORECASE)
+            if m_missing:
+                raw_missing = m_missing.group(1).strip()
                 if raw_missing.upper() != "NONE" and raw_missing:
-                    missing_aspects = [m.strip() for m in raw_missing.split(",") if m.strip()]
+                    missing_aspects = [m.strip() for m in raw_missing.split(",") if m.strip() and m.strip().upper() != "NONE"]
+                continue
 
-            elif upper.startswith("HALLUCINATIONS:"):
-                raw_hall = line.split(":", 1)[-1].strip()
+            m_hall = re.search(r"\bHALLUCINATIONS\s*:\s*(.*)", clean_line, re.IGNORECASE)
+            if m_hall:
+                raw_hall = m_hall.group(1).strip()
                 if raw_hall.upper() != "NONE" and raw_hall:
-                    hallucination_flags = [h.strip() for h in raw_hall.split(",") if h.strip()]
+                    hallucination_flags = [h.strip() for h in raw_hall.split(",") if h.strip() and h.strip().upper() != "NONE"]
+                continue
+
+        # Whole-document fallback if line-by-line missed keys
+        if confidence is None:
+            m_conf = re.search(r"\bCONFIDENCE\s*:\s*([0-9]*\.?[0-9]+)", raw_output, re.IGNORECASE)
+            if m_conf:
+                try:
+                    confidence = max(0.0, min(1.0, float(m_conf.group(1))))
+                except ValueError:
+                    confidence = 0.85 if is_grounded else 0.4
+            else:
+                confidence = 0.85 if is_grounded else 0.4
+
+        if "GROUNDED" in raw_output.upper():
+            m_gr = re.search(r"\bGROUNDED\s*:\s*(YES|NO)\b", raw_output, re.IGNORECASE)
+            if m_gr:
+                is_grounded = m_gr.group(1).upper() == "YES"
 
         # ── Build proper source attribution ──────────────────────────────
         sources = []

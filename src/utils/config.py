@@ -113,6 +113,14 @@ class EvaluationConfig:
     )
 
 
+@dataclass
+class LLMConfig:
+    backend: str = "local"                    # "local" (Mistral-7B GPU) or "gemini" (Cloud API, CPU)
+    gemini_model: str = "gemini-3.6-flash"   # "gemini-3.6-flash", "gemini-2.5-pro", etc.
+    gemini_api_key: str = ""
+
+
+
 # ─────────────────────────────────────────────────────────────────
 # Root config
 # ─────────────────────────────────────────────────────────────────
@@ -128,6 +136,7 @@ class Config:
     finetuning: FineTuningConfig = field(default_factory=FineTuningConfig)
     agents: AgentConfig = field(default_factory=AgentConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
 
 
 def load_config(config_path: str = "config.yaml") -> Config:
@@ -167,6 +176,22 @@ def load_config(config_path: str = "config.yaml") -> Config:
         _apply_section(config, "finetuning", FineTuningConfig, raw)
         _apply_section(config, "agents", AgentConfig, raw)
         _apply_section(config, "evaluation", EvaluationConfig, raw)
+        _apply_section(config, "llm", LLMConfig, raw)
+
+    # Automatically load .env file if present in workspace root
+    env_file = Path(".env")
+    if env_file.exists():
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
 
     # Environment variable overrides
     if os.environ.get("RA_PAPERS_DIR"):
@@ -177,6 +202,14 @@ def load_config(config_path: str = "config.yaml") -> Config:
         config.paths.models_dir = os.environ["RA_MODELS_DIR"]
     if os.environ.get("RA_LOGS_DIR"):
         config.paths.logs_dir = os.environ["RA_LOGS_DIR"]
+
+    # LLM Dual Backend overrides
+    if os.environ.get("LLM_BACKEND"):
+        config.llm.backend = os.environ["LLM_BACKEND"].strip().lower()
+    if os.environ.get("GEMINI_API_KEY"):
+        config.llm.gemini_api_key = os.environ["GEMINI_API_KEY"].strip()
+    if os.environ.get("GEMINI_MODEL"):
+        config.llm.gemini_model = os.environ["GEMINI_MODEL"].strip()
 
     return config
 

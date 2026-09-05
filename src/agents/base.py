@@ -1,24 +1,27 @@
 """
 Base Agent class that all agents inherit from.
 
-Provides a standard interface for loading the fine-tuned model
-and generating responses via prompt templates.
+Provides a standard interface for running inference across dual backends:
+1. 'local'  : Fine-tuned Mistral-7B loaded locally on NVIDIA GPU via PyTorch
+2. 'gemini' : Google Gemini Pro / Flash Cloud API (zero GPU required, runs on CPU/laptop)
 """
 
+import os
 import torch
 from pathlib import Path
 from abc import ABC, abstractmethod
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
 
 from src.utils.logger import get_logger
 from src.utils.config import Config
 
 logger = get_logger(__name__)
 
-# Shared model instance (loaded once, reused by all agents)
+# Shared local model instance (loaded once, reused by all agents)
 _shared_model = None
 _shared_tokenizer = None
+
+# Shared Gemini client instance (initialized once, reused by all agents)
+_shared_gemini_client = None
 
 
 def load_model(cfg: Config):
@@ -37,7 +40,10 @@ def load_model(cfg: Config):
     finetuned_dir_v1 = Path(str(finetuned_dir).replace("-v2", ""))
     base_model_name = cfg.finetuning.base_model
 
-    logger.info("Loading model for agent inference...")
+    logger.info("Loading local Mistral-7B model for agent inference...")
+
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import PeftModel
 
     # Determine which adapter to load (prefer v2)
     adapter_dir = None
@@ -77,16 +83,109 @@ def load_model(cfg: Config):
     return _shared_model, _shared_tokenizer
 
 
+class GeminiRestAdapter:
+    """Fallback REST adapter for direct Gemini API calls via HTTP."""
+
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash"):
+        self.api_key = api_key
+        self.model = model
+        self.url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.model}:generateContent?key={self.api_key}"
+        )
+
+    def generate_content(self, prompt: str, generation_config=None):
+        import requests
+        temp = 0.3
+        max_tokens = 1024
+        if generation_config is not None:
+            temp = getattr(generation_config, "temperature", 0.3)
+            max_tokens = getattr(generation_config, "max_output_tokens", 1024)
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": temp,
+                "maxOutputTokens": max_tokens,
+            }
+        }
+        res = requests.post(self.url, json=payload, timeout=90)
+        res.raise_for_status()
+        data = res.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return type("Resp", (), {"text": ""})()
+        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        return type("Resp", (), {"text": text})()
+
+
+def init_gemini(cfg: Config):
+    """
+    Initializes and caches the Google Gemini client.
+    Reads API key from config or environment variable.
+    """
+    global _shared_gemini_client
+    if _shared_gemini_client is not None:
+        return _shared_gemini_client
+
+    api_key = (cfg.llm.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
+
+    if not api_key or api_key == "YOUR_GEMINI_API_KEY_HERE":
+        raise ValueError(
+            "\n" + "=" * 65 + "\n"
+            "  ❌ GEMINI_API_KEY IS MISSING OR NOT CONFIGURED!\n"
+            "=" * 65 + "\n"
+            "  The research assistant is set to backend: 'gemini', but no\n"
+            "  valid Gemini API key was found.\n\n"
+            "  How to fix this:\n"
+            "  1. Get a free API key at: https://aistudio.google.com/app/apikey\n"
+            "  2. Paste it in your .env file:\n"
+            "         GEMINI_API_KEY=AIzaSy...\n"
+            "     OR export it in your terminal:\n"
+            "         export GEMINI_API_KEY=\"AIzaSy...\"\n"
+            "=" * 65 + "\n"
+        )
+
+    model_name = (cfg.llm.gemini_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")).strip()
+    logger.info(f"Initializing Gemini client with model '{model_name}'...")
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        _shared_gemini_client = genai.GenerativeModel(model_name)
+        logger.info(f"Google Gemini SDK initialized successfully (model: {model_name}).")
+    except Exception as e:
+        logger.warning(f"google.generativeai SDK init note: {e}. Using GeminiRestAdapter.")
+        _shared_gemini_client = GeminiRestAdapter(api_key=api_key, model=model_name)
+
+    return _shared_gemini_client
+
+
 class BaseAgent(ABC):
     """
     Abstract base class for all agents.
     Subclasses must implement: build_prompt() and parse_output().
+
+    Supports dual backends:
+      - 'local' : Fine-tuned Mistral-7B on NVIDIA GPU via PyTorch
+      - 'gemini': Google Gemini Pro / Flash API (zero GPU required)
     """
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self.model, self.tokenizer = load_model(cfg)
-        self.device = next(self.model.parameters()).device
+        self.backend = getattr(cfg, "llm", None) and getattr(cfg.llm, "backend", "local") or "local"
+        self.backend = self.backend.lower().strip()
+
+        if self.backend == "local":
+            self.model, self.tokenizer = load_model(cfg)
+            self.device = next(self.model.parameters()).device
+            self.gemini_model = None
+        elif self.backend == "gemini":
+            self.gemini_model = init_gemini(cfg)
+            self.model, self.tokenizer = None, None
+            self.device = "cpu"
+        else:
+            raise ValueError(f"Unknown LLM backend: '{self.backend}'. Must be 'local' or 'gemini'.")
 
     @abstractmethod
     def build_prompt(self, **kwargs) -> str:
@@ -100,9 +199,16 @@ class BaseAgent(ABC):
 
     def generate(self, prompt: str, max_new_tokens: int = 512, temperature: float = 0.3) -> str:
         """
-        Runs inference on the model with the given prompt.
-        Returns only the newly generated tokens (not the prompt itself).
+        Runs inference on either local model (GPU) or Gemini API (Cloud).
+        Returns only the newly generated text.
         """
+        if self.backend == "gemini":
+            return self._generate_gemini(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+        else:
+            return self._generate_local(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+
+    def _generate_local(self, prompt: str, max_new_tokens: int = 512, temperature: float = 0.3) -> str:
+        """Runs local PyTorch inference on GPU."""
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         input_len = inputs["input_ids"].shape[1]
 
@@ -119,6 +225,35 @@ class BaseAgent(ABC):
 
         generated_ids = outputs[0][input_len:]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+    def _generate_gemini(self, prompt: str, max_new_tokens: int = 1024, temperature: float = 0.3) -> str:
+        """Generates text via Google Gemini API."""
+        # Clean Mistral instruction tags so Gemini receives clean natural instructions
+        clean_prompt = (
+            prompt.replace("<s>", "")
+            .replace("</s>", "")
+            .replace("[INST]", "")
+            .replace("[/INST]", "")
+            .strip()
+        )
+        try:
+            import google.generativeai as genai
+            config = genai.types.GenerationConfig(
+                max_output_tokens=max_new_tokens,
+                temperature=temperature,
+            )
+            response = self.gemini_model.generate_content(clean_prompt, generation_config=config)
+            return response.text.strip()
+        except Exception as e:
+            # Fallback to direct call if SDK has an issue
+            if hasattr(self.gemini_model, "generate_content"):
+                try:
+                    response = self.gemini_model.generate_content(clean_prompt)
+                    return getattr(response, "text", "").strip()
+                except Exception:
+                    pass
+            logger.error(f"Gemini generation error: {e}", exc_info=True)
+            raise RuntimeError(f"Gemini API generation failed: {e}") from e
 
     def _generate(self, prompt: str, max_new_tokens: int = 512, temperature: float = 0.3) -> str:
         """Alias for generate() — preferred internal method name."""

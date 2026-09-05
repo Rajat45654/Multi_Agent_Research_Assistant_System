@@ -86,6 +86,8 @@ class SynthesizerAgent(BaseAgent):
         # Remove duplicate whitespace/newlines
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
+        # Strip dangling trailing asterisks or markdown artifacts
+        text = re.sub(r"[\s*#\-]+$", "", text)
         return text.strip()
 
     def _verify_citations(self, answer: str, num_passages: int) -> list[int]:
@@ -99,12 +101,13 @@ class SynthesizerAgent(BaseAgent):
         answer = raw_output.strip()
         citations = []
 
-        # Split off Citations section if present
-        if "Citations:" in answer:
-            parts = answer.split("Citations:", 1)
-            answer = parts[0].strip()
-            citations_raw = parts[1].strip()
-            citations = [c.strip() for c in citations_raw.split(",") if c.strip()]
+        # Split off Citations section if present (supports markdown: **Citations:**, Citations:, etc.)
+        m_cite = re.search(r"(?:\*\*|#|\b)Citations\s*:\s*", answer, re.IGNORECASE)
+        if m_cite:
+            answer_part = answer[:m_cite.start()].strip()
+            citations_raw = answer[m_cite.end():].strip()
+            answer = answer_part
+            citations = [c.strip().strip("*_#`") for c in citations_raw.split(",") if c.strip()]
 
         # Clean artifacts
         answer = self._clean_artifacts(answer)

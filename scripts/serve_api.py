@@ -24,11 +24,25 @@ def main():
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host interface to bind (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload for local development")
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["local", "gemini"],
+        default=None,
+        help="Override LLM backend: 'local' (Mistral-7B on GPU) or 'gemini' (Gemini Cloud API, CPU only)"
+    )
     args = parser.parse_args()
+
+    import os
+    if args.backend:
+        os.environ["LLM_BACKEND"] = args.backend
+
+    backend_active = args.backend or os.environ.get("LLM_BACKEND", "local")
 
     print("\n" + "=" * 60)
     print("  🔬 MULTI-AGENT RESEARCH ASSISTANT API SERVER")
     print("=" * 60)
+    print(f"  • LLM Backend   : {backend_active.upper()} {'(Cloud API / CPU-only)' if backend_active == 'gemini' else '(Mistral-7B / GPU)'}")
     print(f"  • Web Dashboard : http://localhost:{args.port}/")
     print(f"  • Swagger Docs  : http://localhost:{args.port}/docs")
     print(f"  • OpenAPI Spec  : http://localhost:{args.port}/openapi.json")

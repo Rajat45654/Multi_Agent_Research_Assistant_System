@@ -94,3 +94,11 @@ evaluation:
     - "bleu"
     - "rouge_l"
     - "citation_accuracy"
+
+# ─── Dual Backend LLM Engine ─────────────────────────────────
+llm:
+  backend: "local"            # "local" (Mistral-7B LoRA on GPU) or "gemini" (Cloud API, CPU-only)
+  gemini_model: "gemini-3.6-flash"  # Active model for Gemini API
+
+
+
