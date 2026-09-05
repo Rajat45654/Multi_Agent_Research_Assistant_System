@@ -55,12 +55,12 @@ class SynthesizerAgent(BaseAgent):
             f"Using ONLY the {num_passages} evidence passages provided below, "
             f"write a clear, comprehensive, detailed answer to the question. "
             f"Rules:\n"
-            f"1. You MUST use ALL {num_passages} evidence passages in your answer.\n"
-            f"2. Cite each piece of evidence using [Evidence N] format inline.\n"
-            f"3. Write at least 2 sentences for each evidence passage you use.\n"
+            f"1. Synthesize the {num_passages} evidence passages into a coherent, comprehensive explanation.\n"
+            f"2. Cite evidence inline using [Evidence N] format. Do NOT repeat the same citation consecutively.\n"
+            f"3. Write 1-2 informative sentences for each evidence passage you reference.\n"
             f"4. Do NOT include any information not present in the evidence.\n"
-            f"5. Do NOT use formatting like [/ ], [/Evidence], or markdown headers.\n"
-            f"6. End with: Citations: [Evidence 1], [Evidence 2], ... (list all used){refinement_note}\n\n"
+            f"5. Do NOT repeat citations, sentences, or phrases in loops.\n"
+            f"6. End with: Citations: [Evidence 1], [Evidence 2], ... (list all cited){refinement_note}\n\n"
             f"Question: {query}\n\n"
             f"Evidence:\n{passage_blocks}"
             f"Your answer:\n"
@@ -86,6 +86,14 @@ class SynthesizerAgent(BaseAgent):
         # Remove duplicate whitespace/newlines
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
+        # Deduplicate consecutive repeated citations like: [Evidence 6] [Evidence 6] -> [Evidence 6]
+        text = re.sub(r"(\[Evidence\s*\d+\])(?:\s*,?\s*\1)+", r"\1", text)
+        # Collapse repeated citation clusters
+        text = re.sub(r"((?:\[Evidence\s*\d+\]\s*){2,})\1+", r"\1", text)
+        # Strip trailing cut-off citation fragment (e.g. [Ev or [Evidence)
+        text = re.sub(r"\[\s*E(?:v(?:i(?:d(?:e(?:n(?:c(?:e)?)?)?)?)?)?)?\s*\d*$", "", text).strip()
+        # Clean trailing commas before end
+        text = re.sub(r",\s*$", ".", text)
         # Strip dangling trailing asterisks or markdown artifacts
         text = re.sub(r"[\s*#\-]+$", "", text)
         return text.strip()
@@ -139,7 +147,7 @@ class SynthesizerAgent(BaseAgent):
             doc_metadata=doc_metadata,
             critic_feedback=critic_feedback,
         )
-        raw_output = self._generate(prompt)
+        raw_output = self._generate(prompt, max_new_tokens=768)
         return self.parse_output(
             raw_output,
             num_passages=len(extracted_passages),

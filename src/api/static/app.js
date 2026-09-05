@@ -216,6 +216,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Format Evidence tags in answer body with clickable anchor links and preview tooltips
     let formattedAnswer = data.answer || "";
+    // Safeguard: collapse any repeated consecutive duplicate evidence citations
+    formattedAnswer = formattedAnswer.replace(/(\[Evidence\s*\d+\])(?:\s*,?\s*\1)+/gi, "$1");
     formattedAnswer = formattedAnswer.replace(/\[Evidence\s*(\d+)\]/g, (match, id) => {
       const ev = evidenceMap[id];
       const preview = ev ? escapeHtml(ev.text.substring(0, 140)) + "..." : "Evidence passage " + id;

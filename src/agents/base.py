@@ -218,6 +218,7 @@ class BaseAgent(ABC):
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 do_sample=(temperature > 0),
+                repetition_penalty=1.15,
                 use_cache=True,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
