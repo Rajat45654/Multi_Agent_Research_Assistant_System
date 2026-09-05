@@ -276,8 +276,8 @@ Key sections:
 
 ### Starting the Server
 ```bash
-# Launch FastAPI server & interactive Web Dashboard on port 8000
-python scripts/serve_api.py --port 8000
+# Launch FastAPI server & interactive Web Dashboard (default port: 8080)
+python scripts/serve_api.py --port 8080
 ```
 
 ### ⚡ Dual Backend Switch (Local GPU vs. Gemini Cloud API)

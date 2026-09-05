@@ -2,8 +2,8 @@
 CLI Launcher for the Multi-Agent Research Assistant FastAPI server.
 
 Usage:
-    python scripts/serve_api.py --port 8000
-    python scripts/serve_api.py --port 8000 --host 0.0.0.0
+    python scripts/serve_api.py --port 8080
+    python scripts/serve_api.py --port 8080 --host 0.0.0.0
 """
 
 import argparse
@@ -18,11 +18,12 @@ from src.utils.logger import get_logger
 
 logger = get_logger("scripts.serve_api")
 
-
 def main():
+    import os
+    default_port = int(os.environ.get("PORT", 8080))
     parser = argparse.ArgumentParser(description="Start the Multi-Agent Research Assistant API server.")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host interface to bind (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+    parser.add_argument("--port", type=int, default=default_port, help=f"Port to bind (default: {default_port})")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload for local development")
     parser.add_argument(
         "--backend",
