@@ -56,17 +56,42 @@ class SynthesizerAgent(BaseAgent):
             f"write a clear, comprehensive, detailed answer to the question. "
             f"Rules:\n"
             f"1. Synthesize the {num_passages} evidence passages into a coherent, comprehensive explanation.\n"
-            f"2. Cite evidence inline using [Evidence N] format. Do NOT repeat the same citation consecutively.\n"
+            f"2. Cite evidence inline using [Evidence N] format (e.g. [Evidence 1], [Evidence 2]). You MUST write '[Evidence N]' — NEVER use bare numbers like [1] or [1][2]. Do NOT repeat consecutive citations.\n"
             f"3. Write 1-2 informative sentences for each evidence passage you reference.\n"
             f"4. Do NOT include any information not present in the evidence.\n"
             f"5. Do NOT repeat citations, sentences, or phrases in loops.\n"
-            f"6. End with: Citations: [Evidence 1], [Evidence 2], ... (list all cited){refinement_note}\n\n"
+            f"6. End with: Citations: [Evidence 1], [Evidence 2], ... (list all cited){refinement_note}\n"
+            f"7. STOP immediately after the Citations line. Do NOT write any notes, disclaimers, conversational filler, or postscripts (P.S.).\n\n"
             f"Question: {query}\n\n"
             f"Evidence:\n{passage_blocks}"
             f"Your answer:\n"
             f"[/INST]"
         )
         return prompt
+
+    @staticmethod
+    def _normalize_citations(text: str, num_passages: int) -> str:
+        """Normalize bare citation numbers (e.g. [1][2] or [4]) into [Evidence N] format."""
+        # 1. Expand multi-citation clusters like [1][2] or [5][6] into [Evidence 1] [Evidence 2]
+        def replace_bracket_cluster(match):
+            inner = match.group(0)
+            nums = [int(n) for n in re.findall(r"\b(\d+)\b", inner)]
+            if all(1 <= n <= num_passages for n in nums):
+                return " " + " ".join(f"[Evidence {n}]" for n in nums)
+            return inner
+
+        text = re.sub(r"\[\d+\](?:\s*\[\d+\])+", replace_bracket_cluster, text)
+        text = re.sub(r"\[\d+(?:\s*,\s*\d+)+\]", replace_bracket_cluster, text)
+
+        # 2. Normalize standalone [N] where 1 <= N <= num_passages, if not already preceded by "Evidence "
+        text = re.sub(
+            r"(?<!Evidence\s)\[(\d+)\]",
+            lambda m: f"[Evidence {m.group(1)}]" if 1 <= int(m.group(1)) <= num_passages else m.group(0),
+            text,
+        )
+        # Clean extra spaces
+        text = re.sub(r"[ \t]{2,}", " ", text)
+        return text
 
     @staticmethod
     def _clean_artifacts(text: str) -> str:
@@ -83,6 +108,21 @@ class SynthesizerAgent(BaseAgent):
         text = re.sub(r"\[\s*Evidence\s*(\d+)\s*\]", r"[Evidence \1]", text)
         # Strip leading "Answer:" or "Response:" prefix if regurgitated
         text = re.sub(r"^(?:Answer|Response|Explanation):\s*", "", text.strip(), flags=re.IGNORECASE)
+
+        # Cut off trailing conversational chatter, notes, or postscript loops starting from (Note: or Note: or P.S.
+        text = re.split(
+            r"(?:\n+|\s+)(?:\((?:Note|Additional\s+note|Final\s+note|Please\s+note|Disclaimer|P+\.?S\.?|Lastly|Also|Finally)|Note:|Disclaimer:|P+\.?S\.?:)",
+            text,
+            flags=re.IGNORECASE,
+        )[0]
+        # Remove any stray (P.S. ...) or (Note: ...) anywhere remaining
+        text = re.sub(
+            r"\((?:Note|Additional\s+note|Final\s+note|Please\s+note|Disclaimer|P+\.?S\.?)[^)]*\)?",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+
         # Remove duplicate whitespace/newlines
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
@@ -109,16 +149,25 @@ class SynthesizerAgent(BaseAgent):
         answer = raw_output.strip()
         citations = []
 
-        # Split off Citations section if present (supports markdown: **Citations:**, Citations:, etc.)
-        m_cite = re.search(r"(?:\*\*|#|\b)Citations\s*:\s*", answer, re.IGNORECASE)
+        # Split off Citations section if present (supports Citations:, References:, Sources:, **Citations:**, etc.)
+        m_cite = re.search(r"(?:\*\*|#|\b)(?:Citations|References|Sources)\s*:\s*", answer, re.IGNORECASE)
         if m_cite:
             answer_part = answer[:m_cite.start()].strip()
             citations_raw = answer[m_cite.end():].strip()
+            # Strip any notes or chatter starting from (Note: or (P.S.
+            citations_raw = re.split(
+                r"(?:\n+|\s+)(?:\((?:Note|Additional\s+note|Final\s+note|Please\s+note|Disclaimer|P+\.?S\.?|Lastly|Also|Finally)|Note:|Disclaimer:|P+\.?S\.?:)",
+                citations_raw,
+                flags=re.IGNORECASE,
+            )[0].strip()
             answer = answer_part
             citations = [c.strip().strip("*_#`") for c in citations_raw.split(",") if c.strip()]
 
         # Clean artifacts
         answer = self._clean_artifacts(answer)
+
+        # Normalize bare citation numbers like [1][2] or [4] into [Evidence N]
+        answer = self._normalize_citations(answer, num_passages)
 
         # Verify which evidence IDs are actually used
         citation_ids = self._verify_citations(answer, num_passages)

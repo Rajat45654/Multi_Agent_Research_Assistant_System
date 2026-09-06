@@ -46,6 +46,7 @@ class ReaderAgent(BaseAgent):
             f"Extract the {MIN_PASSAGES} to {MAX_PASSAGES} MOST relevant passages "
             f"from the documents below that directly answer the question. "
             f"Copy passages EXACTLY from the documents — do not paraphrase. "
+            f"Do NOT include any commentary, notes, summaries, or answers. Extract ONLY the raw passages.\n"
             f"Note which Document number each passage came from.\n\n"
             f"Question: {query}\n\n"
             f"Documents:\n{doc_blocks}"
@@ -73,6 +74,12 @@ class ReaderAgent(BaseAgent):
                 header = m.group(1).strip()
                 body = m.group(2).strip().strip('"\'*')
                 body = re.sub(r"^\s*[*#>-]+\s*", "", body).strip()
+                # Cut off any trailing commentary, notes, or draft answers emitted after the passage
+                body = re.split(
+                    r"(?:\n+|\s+)(?:[\(\[]?\s*(?:Note|Notice|Summary|Therefore|These passages|In summary|Conclusion|Explanation)\s*[:\-]|\(?Note:)",
+                    body,
+                    flags=re.IGNORECASE,
+                )[0].strip().strip('"\'*')
                 if len(body) < 15:
                     continue
                 doc_num_str = re.search(r"document\s*(\d+)", header, re.IGNORECASE)

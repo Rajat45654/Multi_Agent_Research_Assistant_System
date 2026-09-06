@@ -60,11 +60,12 @@ class HybridRetriever:
 
     def retrieve(self, query: str, top_k: int = None) -> List[Dict[str, Any]]:
         """Perform hybrid retrieval for a query."""
-        k_semantic = self.config.retrieval.top_k_semantic
-        k_bm25 = self.config.retrieval.top_k_bm25
         k_final = top_k or self.config.retrieval.top_k_final
+        # Scale intermediate candidate retrieval pools to guarantee k_final results
+        k_semantic = max(k_final, self.config.retrieval.top_k_semantic)
+        k_bm25 = max(k_final, self.config.retrieval.top_k_bm25)
         
-        logger.debug(f"Executing hybrid search for: '{query}'")
+        logger.debug(f"Executing hybrid search for: '{query}' (requesting top {k_final}, pool semantic={k_semantic}, bm25={k_bm25})")
         
         semantic_results = self.faiss.search(query, top_k=k_semantic)
         keyword_results = self.bm25.search(query, top_k=k_bm25)
