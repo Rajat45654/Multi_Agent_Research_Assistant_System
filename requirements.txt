@@ -2,7 +2,8 @@
 # ────────────────────────────────────────────────────────────────
  
 # ─── Core ML & LLM ───────────────────────────────────────────────
-# DO NOT INSTALL TORCH - USE COLLEGE'S 2.11.0+cu12.8
+# PyTorch cu128 index
+--extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.11.0+cu128
 transformers>=5.0.0
 peft==0.11.1
