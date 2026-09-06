@@ -113,7 +113,34 @@ def run_all_tests():
         assert "text/event-stream" in stream_res.headers["content-type"]
         print("✓ SSE Streaming endpoint verified.")
 
-    print("\n🎉 ALL 6 API TEST SUITES PASSED SUCCESSFULLY!")
+        # 7. Test Export Endpoints (Phase 5)
+        bib_res = client.post(
+            "/api/v1/export/bibtex",
+            json={
+                "query": "What is attention in transformers?",
+                "answer": "Attention is a mechanism [Evidence 1].",
+                "sources": ["arXiv:1706.03762"],
+            }
+        )
+        assert bib_res.status_code == 200
+        assert "@article" in bib_res.text
+        assert "1706.03762" in bib_res.text
+
+        md_res = client.post(
+            "/api/v1/export/markdown",
+            json={
+                "query": "What is attention in transformers?",
+                "answer": "Attention is a mechanism [Evidence 1].",
+                "sources": ["arXiv:1706.03762"],
+                "confidence": 0.99,
+                "is_grounded": True,
+            }
+        )
+        assert md_res.status_code == 200
+        assert "# 📄 Academic Research Report" in md_res.text
+        print("✓ Academic export endpoints (BibTeX & Markdown) verified.")
+
+    print("\n🎉 ALL 7 API TEST SUITES PASSED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":

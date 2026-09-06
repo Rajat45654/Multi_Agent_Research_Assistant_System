@@ -103,7 +103,11 @@
               <span class="badge-confidence" id="confidenceBadge">Confidence: 1.00</span>
               <span class="badge-latency" id="latencyBadge">⏱️ 0s</span>
             </div>
-            <button id="copyBtn" class="btn-secondary btn-sm" title="Copy answer to clipboard">Copy</button>
+            <div class="header-actions" style="display: flex; gap: 6px;">
+              <button id="copyBtn" class="btn-secondary btn-sm" title="Copy answer to clipboard">📋 Copy</button>
+              <button id="exportBibBtn" class="btn-secondary btn-sm" title="Export BibTeX citations">📚 BibTeX</button>
+              <button id="exportMdBtn" class="btn-secondary btn-sm" title="Download Markdown report">📄 Report (.md)</button>
+            </div>
           </div>
 
           <div class="answer-body" id="answerText">

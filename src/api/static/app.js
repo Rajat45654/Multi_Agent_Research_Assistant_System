@@ -19,6 +19,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const citationsList = document.getElementById("citationsList");
   const rawTraceCode = document.getElementById("rawTraceCode");
   const copyBtn = document.getElementById("copyBtn");
+  const exportBibBtn = document.getElementById("exportBibBtn");
+  const exportMdBtn = document.getElementById("exportMdBtn");
+  let currentResponseData = null;
 
   // Check backend health on startup
   checkHealth();
@@ -54,9 +57,69 @@ document.addEventListener("DOMContentLoaded", () => {
   copyBtn.addEventListener("click", () => {
     navigator.clipboard.writeText(answerText.innerText).then(() => {
       copyBtn.textContent = "Copied!";
-      setTimeout(() => copyBtn.textContent = "Copy", 2000);
+      setTimeout(() => copyBtn.textContent = "📋 Copy", 2000);
     });
   });
+
+  // Export BibTeX
+  if (exportBibBtn) {
+    exportBibBtn.addEventListener("click", async () => {
+      if (!currentResponseData) return;
+      try {
+        exportBibBtn.textContent = "⏳ Exporting...";
+        const res = await fetch("/api/v1/export/bibtex", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentResponseData)
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "citations.bib";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          exportBibBtn.textContent = "✓ Saved!";
+          setTimeout(() => exportBibBtn.textContent = "📚 BibTeX", 2000);
+        }
+      } catch (e) {
+        exportBibBtn.textContent = "Error";
+        setTimeout(() => exportBibBtn.textContent = "📚 BibTeX", 2000);
+      }
+    });
+  }
+
+  // Export Markdown Report
+  if (exportMdBtn) {
+    exportMdBtn.addEventListener("click", async () => {
+      if (!currentResponseData) return;
+      try {
+        exportMdBtn.textContent = "⏳ Exporting...";
+        const res = await fetch("/api/v1/export/markdown", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentResponseData)
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "research_report.md";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          exportMdBtn.textContent = "✓ Saved!";
+          setTimeout(() => exportMdBtn.textContent = "📄 Report (.md)", 2000);
+        }
+      } catch (e) {
+        exportMdBtn.textContent = "Error";
+        setTimeout(() => exportMdBtn.textContent = "📄 Report (.md)", 2000);
+      }
+    });
+  }
 
   // Form Submission via Server-Sent Events (SSE)
   queryForm.addEventListener("submit", async (e) => {
@@ -148,7 +211,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const msg = payload.message || "";
     const data = payload.data || {};
 
-    if (step === "retrieval_start") {
+    if (step === "decomposition_start") {
+      addTimelineStep("decomposition", "🧩 Step 1a: Multi-Hop Decomposition", msg);
+    } else if (step === "retrieval_subquery") {
+      addTimelineStep(`subretrieval_${data.index}`, `🔍 Step 1b: Sub-Query Search (${data.index})`, msg);
+    } else if (step === "retrieval_start") {
       addTimelineStep("retrieval", "🔍 Step 1: Hybrid Retrieval", msg);
     } else if (step === "retrieval_done") {
       updateTimelineStep("retrieval", `Retrieved ${data.num_chunks} document chunks from FAISS + BM25.`);
@@ -197,6 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderFinalAnswer(data, elapsedMs) {
+    currentResponseData = data;
     // Unhide and display the answer card
     answerCard.style.display = "block";
 

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import torch
-from fastapi import APIRouter, HTTPException, Request, Depends, Query
+from fastapi import APIRouter, HTTPException, Request, Depends, Query, Response
 from fastapi.responses import StreamingResponse
 
 from src.api.schemas import (
@@ -18,7 +18,9 @@ from src.api.schemas import (
     HealthResponse,
     MetricsResponse,
     HistoryItem,
+    ExportRequest,
 )
+from src.utils.exporter import generate_bibtex, generate_markdown_report
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -358,4 +360,42 @@ async def stream_query_get(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         }
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Academic Export Endpoints (Phase 5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/api/v1/export/bibtex", tags=["Export"])
+async def export_bibtex(payload: ExportRequest):
+    """
+    Generates downloadable BibTeX entries for all cited arXiv papers.
+    """
+    bib_content = generate_bibtex(sources=payload.sources)
+    return Response(
+        content=bib_content,
+        media_type="application/x-bibtex",
+        headers={"Content-Disposition": "attachment; filename=citations.bib"},
+    )
+
+
+@router.post("/api/v1/export/markdown", tags=["Export"])
+async def export_markdown(payload: ExportRequest):
+    """
+    Generates a publication-ready Markdown research report.
+    """
+    md_content = generate_markdown_report(
+        query=payload.query,
+        answer=payload.answer,
+        confidence=payload.confidence,
+        is_grounded=payload.is_grounded,
+        sources=payload.sources,
+        citations=payload.citations,
+        reasoning_trace=payload.reasoning_trace,
+    )
+    return Response(
+        content=md_content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": "attachment; filename=research_report.md"},
     )

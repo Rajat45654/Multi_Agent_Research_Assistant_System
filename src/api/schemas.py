@@ -252,3 +252,14 @@ class HistoryItem(BaseModel):
         description="Execution latency of this query in seconds.",
         example=75.1
     )
+
+
+class ExportRequest(BaseModel):
+    """Payload for generating academic exports (BibTeX / Markdown)."""
+    query: str = Field(..., description="The original research query.")
+    answer: str = Field(..., description="The synthesized answer text.")
+    sources: List[str] = Field(default_factory=list, description="List of arXiv IDs or paper references.")
+    confidence: float = Field(default=1.0, description="Confidence score.")
+    is_grounded: bool = Field(default=True, description="Whether answer is verified grounded.")
+    citations: Optional[List[str]] = Field(default=None, description="Inline citations.")
+    reasoning_trace: Optional[List[Dict[str, Any]]] = Field(default=None, description="Optional reasoning trace.")

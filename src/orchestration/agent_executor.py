@@ -23,6 +23,7 @@ from src.agents.reader_agent import ReaderAgent
 from src.agents.synthesizer_agent import SynthesizerAgent
 from src.agents.critic_agent import CriticAgent
 from src.tools.retrieval_tool import RetrievalTool
+from src.orchestration.query_decomposer import QueryDecomposer
 from src.utils.config import Config
 from src.utils.logger import get_logger
 
@@ -81,6 +82,7 @@ class AgentExecutor:
         logger.info("Initializing AgentExecutor...")
 
         self.retrieval_tool = RetrievalTool(cfg)
+        self.decomposer = QueryDecomposer(cfg)
         self.reader = ReaderAgent(cfg)
         self.synthesizer = SynthesizerAgent(cfg)
         self.critic = CriticAgent(cfg)
@@ -102,9 +104,23 @@ class AgentExecutor:
         reasoning_trace = []
         self.memory.add("user", question)
 
-        # ── Step 1: Retrieval ─────────────────────────────────────────────
-        logger.info(f"[Step 1/4] Retrieval: '{question[:80]}'")
-        retrieved_docs = self.retrieval_tool.retrieve(question, top_k=top_k)
+        # ── Step 1: Retrieval & Multi-Hop Decomposition ───────────────────
+        is_multi_hop = self.decomposer.is_multi_hop(question)
+        sub_queries = self.decomposer.decompose(question) if is_multi_hop else [question]
+
+        if is_multi_hop and len(sub_queries) > 1:
+            logger.info(f"[Step 1/4] Multi-hop query decomposition: {sub_queries}")
+            retrieved_lists = [self.retrieval_tool.retrieve(sq, top_k=top_k) for sq in sub_queries]
+            retrieved_docs = self.decomposer.fuse_results(retrieved_lists, top_k=top_k)
+            reasoning_trace.append({
+                "step": "query_decomposition",
+                "sub_queries": sub_queries,
+                "fused_docs_count": len(retrieved_docs),
+            })
+        else:
+            logger.info(f"[Step 1/4] Retrieval: '{question[:80]}'")
+            retrieved_docs = self.retrieval_tool.retrieve(question, top_k=top_k)
+
         reasoning_trace.append({
             "step": "retrieval",
             "num_docs_retrieved": len(retrieved_docs),
@@ -266,13 +282,39 @@ class AgentExecutor:
         reasoning_trace = []
         self.memory.add("user", question)
 
-        # ── Step 1: Retrieval ─────────────────────────────────────────────
-        yield {
-            "step": "retrieval_start",
-            "message": f"Searching hybrid index (FAISS + BM25) for top {top_k} documents...",
-            "data": {"query": question, "top_k": top_k}
-        }
-        retrieved_docs = self.retrieval_tool.retrieve(question, top_k=top_k)
+        # ── Step 1: Retrieval & Multi-Hop Decomposition ───────────────────
+        is_multi_hop = self.decomposer.is_multi_hop(question)
+        sub_queries = self.decomposer.decompose(question) if is_multi_hop else [question]
+
+        if is_multi_hop and len(sub_queries) > 1:
+            yield {
+                "step": "decomposition_start",
+                "message": f"Decomposing comparative question into {len(sub_queries)} sub-queries: {', '.join(sub_queries)}",
+                "data": {"sub_queries": sub_queries}
+            }
+            retrieved_lists = []
+            for i, sq in enumerate(sub_queries):
+                yield {
+                    "step": "retrieval_subquery",
+                    "message": f"Retrieving literature for sub-topic {i+1}/{len(sub_queries)}: '{sq}'...",
+                    "data": {"sub_query": sq, "index": i + 1}
+                }
+                retrieved_lists.append(self.retrieval_tool.retrieve(sq, top_k=top_k))
+
+            retrieved_docs = self.decomposer.fuse_results(retrieved_lists, top_k=top_k)
+            reasoning_trace.append({
+                "step": "query_decomposition",
+                "sub_queries": sub_queries,
+                "fused_docs_count": len(retrieved_docs),
+            })
+        else:
+            yield {
+                "step": "retrieval_start",
+                "message": f"Searching hybrid index (FAISS + BM25) for top {top_k} documents...",
+                "data": {"query": question, "top_k": top_k}
+            }
+            retrieved_docs = self.retrieval_tool.retrieve(question, top_k=top_k)
+
         reasoning_trace.append({
             "step": "retrieval",
             "num_docs_retrieved": len(retrieved_docs),

@@ -306,13 +306,45 @@ The system supports two interchangeable LLM backends:
 | `/health` | `GET` | System health, uptime, active backend, and GPU VRAM occupancy |
 | `/api/v1/metrics` | `GET` | Live telemetry (queries served, mean latency, groundedness %) |
 | `/api/v1/history` | `GET` | In-memory rolling history of recent queries |
+| `/api/v1/export/bibtex` | `POST` | Generates downloadable `.bib` BibTeX bibliography |
+| `/api/v1/export/markdown` | `POST` | Generates downloadable `.md` comprehensive research report |
 
 ---
 
-## 🔜 Upcoming (Phase 5)
+## 🐳 Phase 5: Production Engineering, Docker & Multi-Hop
 
-- [x] Dual-backend provider (Gemini Pro/Flash API adapter for CPU-only execution)
-- [ ] Docker containerization (`Dockerfile` & `docker-compose.yml`)
-- [ ] Multi-hop query decomposition for comparative cross-paper synthesis
-- [ ] Production deployment & CI/CD pipeline
+### 1. Docker Containerization
+Run the full multi-agent stack inside Docker on port 8080 (isolated from host ports like Redis 8001):
+```bash
+# Start container stack using Docker Compose
+docker compose up -d
+
+# Check live logs
+docker compose logs -f
+```
+
+### 2. Multi-Hop Comparative Reasoning
+The system automatically detects comparative and multi-faceted research questions (e.g., *"Compare LoRA and QLoRA in memory efficiency"*), decomposing them into targeted sub-queries with Reciprocal Rank Fusion (RRF) across literature facets.
+
+### 3. Academic Export & BibTeX Generation
+Directly export research outputs from the Web Dashboard:
+- **`📚 BibTeX`**: One-click download of `.bib` citation entries for LaTeX/Overleaf.
+- **`📄 Report (.md)`**: Download complete research reports formatted in Markdown.
+
+### 4. Continuous Integration (CI/CD)
+Automated GitHub Actions workflow (`.github/workflows/ci.yml`) validates:
+- Python 3.12 syntax and compilation integrity.
+- Multi-hop query decomposition test suite.
+- Academic citation exporter test suite.
+- Docker container build verification.
+
+---
+
+## 🏆 Project Milestone Roadmap
+
+- [x] **Phase 1**: Data collection (500 arXiv papers), chunking, hybrid retrieval (FAISS + BM25), synthetic Q&A generation (5,000 pairs).
+- [x] **Phase 2**: LoRA fine-tuning of Mistral-7B on NVIDIA Blackwell GPU, validation gap reduction (12x smaller), W&B tracking.
+- [x] **Phase 3**: 4-agent state machine (Retriever, Reader, Synthesizer, Critic) with iterative groundedness verification (1.5% hallucination rate, 0.998 confidence).
+- [x] **Phase 4**: FastAPI serving backend, real-time SSE streaming, interactive Web Dashboard, dual-backend support (Local GPU / Gemini Cloud API).
+- [x] **Phase 5**: Docker containerization (`docker-compose.yml`), multi-hop query decomposition, BibTeX/Markdown export, and GitHub Actions CI pipeline.
 

@@ -1,0 +1,31 @@
+# ═════════════════════════════════════════════════════════════════
+# Multi-Agent Research Assistant — Docker Compose Stack
+# ═════════════════════════════════════════════════════════════════
+
+version: "3.8"
+
+services:
+  research-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: research-assistant-app
+    restart: unless-stopped
+    ports:
+      # Binds to port 8080 (strictly avoiding Redis port 8001)
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+      - LLM_BACKEND=${LLM_BACKEND:-local}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.6-flash}
+    volumes:
+      # Mount data cache and model checkpoints for persistence
+      - ./data:/app/data
+      - ./models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
