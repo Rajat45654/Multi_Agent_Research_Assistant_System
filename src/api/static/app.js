@@ -284,7 +284,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Format Evidence tags in answer body with clickable anchor links and preview tooltips
     let formattedAnswer = data.answer || "";
-    // Safeguard: collapse any repeated consecutive duplicate evidence citations
+    // Safeguard 1: expand combined brackets like [Evidence 5, Evidence 6] or [Evidence 5, 6] into [Evidence 5] [Evidence 6]
+    formattedAnswer = formattedAnswer.replace(/\[Evidence\s*\d+(?:\s*,\s*(?:Evidence\s*)?\d+)+\]/gi, (match) => {
+      const nums = match.match(/\d+/g) || [];
+      return nums.map(n => `[Evidence ${n}]`).join(" ");
+    });
+    // Safeguard 2: collapse any repeated consecutive duplicate evidence citations
     formattedAnswer = formattedAnswer.replace(/(\[Evidence\s*\d+\])(?:\s*,?\s*\1)+/gi, "$1");
     formattedAnswer = formattedAnswer.replace(/\[Evidence\s*(\d+)\]/g, (match, id) => {
       const ev = evidenceMap[id];
@@ -306,6 +311,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (evidenceList.length > 0) {
       evidenceList.forEach((item) => {
         const cleanId = (item.arxiv_id || item.source || "").replace("arXiv:", "").trim();
+        const isCited = (data.citation_ids && data.citation_ids.includes(item.id)) || formattedAnswer.includes(`[Evidence ${item.id}]`);
+        const citedBadge = isCited
+          ? `<span class="evidence-status-badge badge-cited">✓ Cited in Answer</span>`
+          : `<span class="evidence-status-badge badge-context">Retrieved Context</span>`;
         const card = document.createElement("div");
         card.className = "citation-card";
         card.id = `evidence-${item.id}`;
@@ -313,6 +322,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <div class="citation-card-header">
             <span class="evidence-pill">[Evidence ${item.id}]</span>
             <span class="evidence-paper">Paper: <strong>${escapeHtml(item.source)}</strong></span>
+            ${citedBadge}
             <a href="https://arxiv.org/abs/${cleanId}" target="_blank" rel="noreferrer">View Paper on arXiv ↗</a>
           </div>
           <div class="citation-quote">

@@ -15,7 +15,7 @@ A **production-grade multi-agent RAG system** that answers complex research ques
 | **Phase 2 v2** | LoRA Fine-Tuning (5K data, improved) | ✅ Done | **Train: 1.531, Val: 1.513, gap: 0.018** |
 | **Phase 3** | Agent Robustness + Evaluation Suite | ✅ Done | **BERTScore: 0.7996, Hallucination: 1.5%** |
 | **Phase 4** | API & Serving Layer (FastAPI) + Web UI | ✅ Done | **FastAPI, SSE Stream, Web Dashboard** |
-| **Phase 5** | Containerization & Deployment (Docker) | 🔜 Next | — |
+| **Phase 5** | Containerization, Multi-Hop Reasoning & CI/CD | ✅ Done | **Docker Compose, RRF Fusion, BibTeX Exporter, GitHub Actions** |
 
 ---
 

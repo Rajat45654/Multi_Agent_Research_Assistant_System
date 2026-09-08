@@ -46,6 +46,7 @@ class ReaderAgent(BaseAgent):
             f"Extract the {MIN_PASSAGES} to {MAX_PASSAGES} MOST relevant passages "
             f"from the documents below that directly answer the question. "
             f"Copy passages EXACTLY from the documents — do not paraphrase. "
+            f"Do NOT extract pure bibliographic lines, conference footers (e.g., 'In: Proceedings...', 'Springer', page numbers), or book citations. Extract ONLY substantive research claims, methodologies, or findings.\n"
             f"Do NOT include any commentary, notes, summaries, or answers. Extract ONLY the raw passages.\n"
             f"Note which Document number each passage came from.\n\n"
             f"Question: {query}\n\n"
@@ -81,6 +82,9 @@ class ReaderAgent(BaseAgent):
                     flags=re.IGNORECASE,
                 )[0].strip().strip('"\'*')
                 if len(body) < 15:
+                    continue
+                # Discard pure bibliographic footer fragments (e.g. "In: Computer Vision - ECCV 2016...")
+                if re.match(r"^(?:depth\.\s*)?In:\s*.*(?:Conference|Proceedings|Springer|pp\.\s*\d+)", body, re.IGNORECASE):
                     continue
                 doc_num_str = re.search(r"document\s*(\d+)", header, re.IGNORECASE)
                 if not doc_num_str:

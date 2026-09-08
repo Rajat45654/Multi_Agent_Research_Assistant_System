@@ -56,7 +56,7 @@ class SynthesizerAgent(BaseAgent):
             f"write a clear, comprehensive, detailed answer to the question. "
             f"Rules:\n"
             f"1. Synthesize the {num_passages} evidence passages into a coherent, comprehensive explanation.\n"
-            f"2. Cite evidence inline using [Evidence N] format (e.g. [Evidence 1], [Evidence 2]). You MUST write '[Evidence N]' — NEVER use bare numbers like [1] or [1][2]. Do NOT repeat consecutive citations.\n"
+            f"2. Cite evidence inline using separate [Evidence N] tags for EACH reference (e.g. [Evidence 1], [Evidence 2]). You MUST write '[Evidence N]' for every passage cited — NEVER combine multiple citations into one bracket like [Evidence 5, 6] or [Evidence 5, Evidence 6], and NEVER use bare numbers like [1] or [1][2]. Do NOT repeat consecutive citations.\n"
             f"3. Write 1-2 informative sentences for each evidence passage you reference.\n"
             f"4. Do NOT include any information not present in the evidence.\n"
             f"5. Do NOT repeat citations, sentences, or phrases in loops.\n"
@@ -71,7 +71,22 @@ class SynthesizerAgent(BaseAgent):
 
     @staticmethod
     def _normalize_citations(text: str, num_passages: int) -> str:
-        """Normalize bare citation numbers (e.g. [1][2] or [4]) into [Evidence N] format."""
+        """Normalize bare citation numbers and combined brackets into separate [Evidence N] format."""
+        # 0. Expand multi-evidence brackets like [Evidence 5, Evidence 6] or [Evidence 5, 6]
+        def expand_multi_evidence(match):
+            inner = match.group(0)
+            nums = [int(n) for n in re.findall(r"\b(\d+)\b", inner)]
+            if all(1 <= n <= num_passages for n in nums):
+                return " " + " ".join(f"[Evidence {n}]" for n in nums)
+            return inner
+
+        text = re.sub(
+            r"\[Evidence\s*\d+(?:\s*,\s*(?:Evidence\s*)?\d+)+\]",
+            expand_multi_evidence,
+            text,
+            flags=re.IGNORECASE,
+        )
+
         # 1. Expand multi-citation clusters like [1][2] or [5][6] into [Evidence 1] [Evidence 2]
         def replace_bracket_cluster(match):
             inner = match.group(0)
