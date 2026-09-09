@@ -1,6 +1,6 @@
 # 🔬 Multi-Agent Research Assistant
 
-A **production-grade multi-agent RAG system** that answers complex research questions by retrieving, reading, synthesizing, and critically validating answers from academic papers — all running locally on GPU with no external API calls.
+A **production-grade multi-agent RAG system** that answers complex research questions by retrieving, reading, synthesizing, and critically validating answers from academic papers - all running locally on GPU with no external API calls.
 
 ---
 
@@ -62,7 +62,7 @@ User Query
 ## 🧠 Model
 
 - **Base:** `mistralai/Mistral-7B-Instruct-v0.2`
-- **Fine-tuning:** LoRA (`r=32, alpha=64`) via `trl` SFTTrainer — v2 improved config
+- **Fine-tuning:** LoRA (`r=32, alpha=64`) via `trl` SFTTrainer - v2 improved config
 - **Precision:** Native `bfloat16` (Blackwell GPU optimized, no quantization)
 - **Training data:** **5,000 synthetic Q&A pairs** from 500 ArXiv papers (10 per paper)
 - **Training time:** ~3.5 hours
@@ -132,19 +132,19 @@ research-assistant/
 ### 1. Setup
 
 ```bash
-git clone <your-repo-url>
-cd research-assistant
+git clone https://github.com/Rajat45654/Multi_Agent_Research_Assistant_System.git
+cd Multi_Agent_Research_Assistant_System
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Reproduce Phase 1 — Data & Retrieval
+### 2. Reproduce Phase 1 - Data & Retrieval
 
 ```bash
 # Collect 500 papers from ArXiv (cs.LG, cs.CL, cs.AI)
 python scripts/collect_papers.py
 
-# Generate 5,000 Q&A pairs (requires GPU)
+# Generate 5,000 Q&A pairs
 python scripts/generate_qa.py
 
 # Build FAISS + BM25 indices
@@ -154,7 +154,7 @@ python scripts/build_index.py
 python scripts/eval_retrieval.py
 ```
 
-### 3. Reproduce Phase 2 — Fine-Tuning
+### 3. Reproduce Phase 2 - Fine-Tuning
 
 ```bash
 # Train LoRA adapter on Mistral-7B
@@ -171,13 +171,13 @@ python scripts/run_evaluation.py --num_samples 200
 ### 5. Launch API & Interactive Web Dashboard (Phase 4)
 
 ```bash
-# Start FastAPI backend and serve web dashboard
-python scripts/serve_api.py --port 8000
+# Start FastAPI backend and serve web dashboard (default port: 8080)
+python scripts/serve_api.py --port 8080
 
 # Open in browser:
-# • Interactive Web UI : http://localhost:8000/
-# • OpenAPI Swagger Docs: http://localhost:8000/docs
-# • Health Status Check : http://localhost:8000/health
+# • Interactive Web UI : http://localhost:8080/
+# • OpenAPI Swagger Docs: http://localhost:8080/docs
+# • Health Status Check : http://localhost:8080/health
 ```
 
 ---
@@ -219,16 +219,16 @@ Hybrid retrieval (70% semantic + 30% keyword) outperforms either method alone.
 
 Evaluated end-to-end across 200 held-out academic queries with native GPU inference:
 
-| Metric | Score | Target | Status |
-|--------|-------|--------|--------|
-| **Evaluation Completion** | **200 / 200 (0 errors)** | 200 | 100% stable |
-| **Hallucination Rate** | **1.5%** | $\le 10\%$ | 🏆 Grounded |
-| **BERTScore F1** | **0.7996** | $\ge 0.75$ | 🎯 Semantic alignment |
-| **Average Confidence** | **0.998** | $\ge 0.85$ | 🌟 High certainty |
-| **Average Iterations** | **1.04** | $\le 2.0$ | ⚡ 96% approved on pass 1 |
-| **Token F1** | **0.3438** | — | High lexical precision |
-| **ROUGE-L** | **0.2311** | — | Long-form cited explanations vs short references |
-| **Average Pipeline Latency**| **76.6s / query** | — | 4-agent local GPU inference |
+| Metric | Score | Details / Status |
+|--------|-------|------------------|
+| **Evaluation Completion** | **200 / 200 (0 errors)** | 100% stable (Target: 200) |
+| **Hallucination Rate** | **1.5%** | 🏆 Grounded ($\le 10\%$) |
+| **BERTScore F1** | **0.7996** | 🎯 Semantic alignment ($\ge 0.75$) |
+| **Average Confidence** | **0.998** | 🌟 High certainty ($\ge 0.85$) |
+| **Average Iterations** | **1.04** | ⚡ 96% approved on pass 1 ($\le 2.0$) |
+| **Token F1** | **0.3438** | High lexical precision |
+| **ROUGE-L** | **0.2311** | Long-form cited explanations |
+| **Average Pipeline Latency**| **76.6s / query** | 4-agent local GPU inference |
 
 ### Breakdown by Question Difficulty
 
@@ -247,10 +247,10 @@ Evaluated end-to-end across 200 held-out academic queries with native GPU infere
 All hyperparameters are centralized in [`config.yaml`](config.yaml). No hardcoded values in source code.
 
 Key sections:
-- `qa_generation` — controls dataset generation
-- `finetuning` — LoRA rank, dropout, learning rate, epochs
-- `retrieval` — FAISS/BM25 weights and top-K values
-- `agents` — max iterations, confidence threshold
+- `qa_generation`: controls dataset generation
+- `finetuning`: LoRA rank, dropout, learning rate, epochs
+- `retrieval`: FAISS/BM25 weights and top-K values
+- `agents`: max iterations, confidence threshold
 
 ---
 
@@ -314,7 +314,7 @@ The system supports two interchangeable LLM backends:
 ## 🐳 Phase 5: Production Engineering, Docker & Multi-Hop
 
 ### 1. Docker Containerization
-Run the full multi-agent stack inside Docker on port 8080 (isolated from host ports like Redis 8001):
+Run the full multi-agent stack inside Docker on port 8080:
 ```bash
 # Start container stack using Docker Compose
 docker compose up -d
